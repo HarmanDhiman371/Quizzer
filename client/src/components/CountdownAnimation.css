@@ -1,0 +1,36 @@
+.countdown-animation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.countdown-svg {
+  transform: rotate(-90deg);
+}
+
+.countdown-bg {
+  fill: none;
+  stroke: #e5e7eb;
+}
+
+.countdown-progress {
+  fill: none;
+  stroke: #6366f1;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.countdown-text {
+  font-size: 16px;
+  font-weight: bold;
+  fill: #6366f1;
+  transform: rotate(90deg);
+}
+
+.countdown-progress.warning {
+  stroke: #ef4444;
+}
+
+.countdown-text.warning {
+  fill: #ef4444;
+}
