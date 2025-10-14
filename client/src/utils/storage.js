@@ -1,3 +1,15 @@
+import { 
+  saveQuizToFirestore, 
+  updateQuizInFirestore, 
+  deleteQuizFromFirestore, 
+  getQuizzesFromFirestore, 
+  getActiveQuizFromFirestore,
+  listenToActiveQuiz,
+  saveQuizResultToFirestore,
+  getQuizResultsFromFirestore,
+  listenToQuizResults
+} from './firestoreService';
+
 const STORAGE_KEYS = {
   QUIZZES: 'quizzes',
   ACTIVE_QUIZ: 'activeQuiz',
@@ -5,6 +17,9 @@ const STORAGE_KEYS = {
   ATTEMPTED_STUDENTS: 'attemptedStudents',
   QUIZ_CLASSES: 'quizClasses'
 };
+
+// Choose storage mode: 'firestore' or 'local'
+const STORAGE_MODE = 'firestore'; // Change to 'local' if you want to use localStorage only
 
 // Quiz Classes Management
 export const getQuizClasses = () => {
@@ -20,88 +35,164 @@ export const saveQuizClass = (className) => {
   }
 };
 
-// Enhanced Quiz storage
-export const saveQuiz = (quiz) => {
-  const quizzes = getQuizzes();
-  // Add class to classes list
-  saveQuizClass(quiz.class);
-  
-  // Check if quiz with same ID exists
-  const existingIndex = quizzes.findIndex(q => q.id === quiz.id);
-  if (existingIndex >= 0) {
-    quizzes[existingIndex] = quiz;
+// Enhanced Quiz storage with Firebase support
+export const saveQuiz = async (quiz) => {
+  if (STORAGE_MODE === 'firestore') {
+    return await saveQuizToFirestore(quiz);
   } else {
-    quizzes.push(quiz);
+    // Fallback to localStorage
+    const quizzes = getQuizzes();
+    // Add class to classes list
+    saveQuizClass(quiz.class);
+    
+    // Check if quiz with same ID exists
+    const existingIndex = quizzes.findIndex(q => q.id === quiz.id);
+    if (existingIndex >= 0) {
+      quizzes[existingIndex] = quiz;
+    } else {
+      quizzes.push(quiz);
+    }
+    localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(quizzes));
+    return quiz;
   }
-  localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(quizzes));
-  return quiz;
 };
 
-export const getQuizzes = () => {
-  const quizzes = localStorage.getItem(STORAGE_KEYS.QUIZZES);
-  return quizzes ? JSON.parse(quizzes) : [];
+export const getQuizzes = async () => {
+  if (STORAGE_MODE === 'firestore') {
+    return await getQuizzesFromFirestore();
+  } else {
+    const quizzes = localStorage.getItem(STORAGE_KEYS.QUIZZES);
+    return quizzes ? JSON.parse(quizzes) : [];
+  }
 };
 
-export const getQuizzesByClass = (className) => {
-  const quizzes = getQuizzes();
+export const getQuizzesByClass = async (className) => {
+  const quizzes = await getQuizzes();
   return quizzes.filter(quiz => quiz.class === className);
 };
 
-export const deleteQuiz = (quizId) => {
-  const quizzes = getQuizzes();
-  const filteredQuizzes = quizzes.filter(quiz => quiz.id !== quizId);
-  localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(filteredQuizzes));
+export const deleteQuiz = async (quizId) => {
+  if (STORAGE_MODE === 'firestore') {
+    await deleteQuizFromFirestore(quizId);
+  } else {
+    const quizzes = getQuizzes();
+    const filteredQuizzes = quizzes.filter(quiz => quiz.id !== quizId);
+    localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(filteredQuizzes));
+  }
 };
 
-export const setActiveQuiz = (quiz) => {
-  const activeQuiz = {
-    ...quiz,
-    startTime: Date.now(),
-    status: 'active'
-  };
-  localStorage.setItem(STORAGE_KEYS.ACTIVE_QUIZ, JSON.stringify(activeQuiz));
-  return activeQuiz;
+export const setActiveQuiz = async (quiz) => {
+  if (STORAGE_MODE === 'firestore') {
+    try {
+      // Make sure we have a valid quiz ID
+      if (!quiz.id) {
+        console.error('Cannot set active quiz: No quiz ID provided');
+        throw new Error('No quiz ID provided');
+      }
+      
+      console.log('🔄 Setting active quiz:', quiz.id);
+      
+      // Update the quiz status to active in Firestore
+      await updateQuizInFirestore(quiz.id, { 
+        status: 'active', 
+        startTime: Date.now() 
+      });
+      
+      const activeQuiz = { 
+        ...quiz, 
+        status: 'active', 
+        startTime: Date.now() 
+      };
+      
+      console.log('✅ Active quiz set successfully');
+      return activeQuiz;
+    } catch (error) {
+      console.error('❌ Error setting active quiz:', error);
+      throw error;
+    }
+  } else {
+    const activeQuiz = {
+      ...quiz,
+      startTime: Date.now(),
+      status: 'active'
+    };
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_QUIZ, JSON.stringify(activeQuiz));
+    return activeQuiz;
+  }
+};
+export const getActiveQuiz = async () => {
+  if (STORAGE_MODE === 'firestore') {
+    return await getActiveQuizFromFirestore();
+  } else {
+    const activeQuiz = localStorage.getItem(STORAGE_KEYS.ACTIVE_QUIZ);
+    return activeQuiz ? JSON.parse(activeQuiz) : null;
+  }
 };
 
-export const getActiveQuiz = () => {
-  const activeQuiz = localStorage.getItem(STORAGE_KEYS.ACTIVE_QUIZ);
-  return activeQuiz ? JSON.parse(activeQuiz) : null;
-};
-
-export const clearActiveQuiz = () => {
-  localStorage.removeItem(STORAGE_KEYS.ACTIVE_QUIZ);
+export const clearActiveQuiz = async () => {
+  if (STORAGE_MODE === 'firestore') {
+    const activeQuiz = await getActiveQuizFromFirestore();
+    if (activeQuiz) {
+      await updateQuizInFirestore(activeQuiz.id, { status: 'completed' });
+    }
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_QUIZ);
+  }
 };
 
 // Enhanced Results Management
-export const saveQuizResult = (result) => {
-  const results = getQuizResults();
-  // Remove existing result for same student and quiz
-  const filteredResults = results.filter(r => 
-    !(r.studentName.toLowerCase() === result.studentName.toLowerCase() && 
-      r.quizId === result.quizId)
-  );
-  filteredResults.push(result);
-  localStorage.setItem(STORAGE_KEYS.QUIZ_RESULTS, JSON.stringify(filteredResults));
+export const saveQuizResult = async (result) => {
+  if (STORAGE_MODE === 'firestore') {
+    return await saveQuizResultToFirestore(result);
+  } else {
+    const results = getQuizResults();
+    // Remove existing result for same student and quiz
+    const filteredResults = results.filter(r => 
+      !(r.studentName.toLowerCase() === result.studentName.toLowerCase() && 
+        r.quizId === result.quizId)
+    );
+    filteredResults.push(result);
+    localStorage.setItem(STORAGE_KEYS.QUIZ_RESULTS, JSON.stringify(filteredResults));
+  }
 };
 
-export const getQuizResults = () => {
-  const results = localStorage.getItem(STORAGE_KEYS.QUIZ_RESULTS);
-  return results ? JSON.parse(results) : [];
+export const getQuizResults = async (quizId = null) => {
+  try {
+    if (STORAGE_MODE === 'firestore') {
+      if (quizId) {
+        const results = await getQuizResultsFromFirestore(quizId);
+        return results || [];
+      }
+      return []; // Return empty array if no quizId
+    } else {
+      const results = localStorage.getItem(STORAGE_KEYS.QUIZ_RESULTS);
+      const allResults = results ? JSON.parse(results) : [];
+      return quizId ? allResults.filter(r => r.quizId === quizId) : allResults;
+    }
+  } catch (error) {
+    console.error('Error getting quiz results:', error);
+    return []; // Always return array on error
+  }
 };
 
-export const getResultsByQuiz = (quizId) => {
-  const results = getQuizResults();
-  return results.filter(result => result.quizId === quizId);
+export const getResultsByQuiz = async (quizId) => {
+  return await getQuizResults(quizId);
 };
 
-export const deleteQuizResults = (quizId) => {
-  const results = getQuizResults();
-  const filteredResults = results.filter(result => result.quizId !== quizId);
-  localStorage.setItem(STORAGE_KEYS.QUIZ_RESULTS, JSON.stringify(filteredResults));
+export const deleteQuizResults = async (quizId) => {
+  if (STORAGE_MODE === 'firestore') {
+    // Firestore doesn't have a direct way to delete multiple documents by query
+    // This would need to be implemented differently
+    console.log('Delete quiz results not implemented for Firestore yet');
+  } else {
+    const results = getQuizResults();
+    const filteredResults = results.filter(result => result.quizId !== quizId);
+    localStorage.setItem(STORAGE_KEYS.QUIZ_RESULTS, JSON.stringify(filteredResults));
+  }
 };
 
-export const getOverallTopStudents = (limit = 5) => {
-  const results = getQuizResults();
+export const getOverallTopStudents = async (limit = 5) => {
+  const results = await getQuizResults();
   const studentPerformance = {};
   
   results.forEach(result => {
@@ -131,7 +222,34 @@ export const getOverallTopStudents = (limit = 5) => {
     .slice(0, limit);
 };
 
-// Attempt tracking
+// Real-time listeners - ADD THESE MISSING EXPORTS
+export const onActiveQuizChange = (callback) => {
+  if (STORAGE_MODE === 'firestore') {
+    return listenToActiveQuiz(callback);
+  } else {
+    // Fallback: poll every 2 seconds for localStorage
+    const interval = setInterval(async () => {
+      const activeQuiz = await getActiveQuiz();
+      callback(activeQuiz);
+    }, 2000);
+    return () => clearInterval(interval);
+  }
+};
+
+export const onQuizResultsChange = (quizId, callback) => {
+  if (STORAGE_MODE === 'firestore') {
+    return listenToQuizResults(quizId, callback);
+  } else {
+    // Fallback: poll every 2 seconds for localStorage
+    const interval = setInterval(async () => {
+      const results = await getQuizResults(quizId);
+      callback(results);
+    }, 2000);
+    return () => clearInterval(interval);
+  }
+};
+
+// Attempt tracking (stays in localStorage for now)
 export const hasStudentAttempted = (quizId, studentName) => {
   const attempted = localStorage.getItem(STORAGE_KEYS.ATTEMPTED_STUDENTS);
   const attemptedMap = attempted ? JSON.parse(attempted) : {};
@@ -144,63 +262,69 @@ export const markStudentAttempted = (quizId, studentName) => {
   attemptedMap[`${quizId}_${studentName.toLowerCase()}`] = true;
   localStorage.setItem(STORAGE_KEYS.ATTEMPTED_STUDENTS, JSON.stringify(attemptedMap));
 };
-// Add this to your storage.js file
-export const checkScheduledQuizzes = () => {
-  const quizzes = getQuizzes();
-  const now = Date.now();
-  let startedQuiz = null;
 
-  console.log('🔍 Checking scheduled quizzes...', { 
-    now: new Date(now).toLocaleString(),
-    totalQuizzes: quizzes.length 
-  });
+// Scheduled quizzes check
+export const checkScheduledQuizzes = async () => {
+  try {
+    const quizzes = await getQuizzes();
+    const now = Date.now();
+    let startedQuiz = null;
 
-  const updatedQuizzes = quizzes.map(quiz => {
-    // Check if this is a scheduled quiz that should start now
-    if (quiz.status === 'scheduled' && quiz.scheduledTime && quiz.scheduledTime <= now) {
-      console.log('🚀 Auto-starting quiz:', quiz.name, 
-        'scheduled:', new Date(quiz.scheduledTime).toLocaleString(),
-        'now:', new Date(now).toLocaleString()
-      );
-      
-      // Create active quiz
-      startedQuiz = {
-        ...quiz,
-        startTime: now,
-        status: 'active'
-      };
-      
-      console.log('✅ New active quiz:', startedQuiz);
-      return startedQuiz; // Return the updated quiz
+    console.log('🔍 Checking scheduled quizzes...', { 
+      now: new Date(now).toLocaleString(),
+      totalQuizzes: quizzes.length 
+    });
+
+    for (const quiz of quizzes) {
+      if (quiz.status === 'scheduled' && quiz.scheduledTime && quiz.scheduledTime <= now) {
+        console.log('🚀 Auto-starting quiz:', quiz.name, 'ID:', quiz.id);
+        
+        try {
+          // Auto-start the quiz
+          startedQuiz = await setActiveQuiz(quiz);
+          console.log('✅ Quiz auto-started successfully:', startedQuiz.name);
+          break;
+        } catch (error) {
+          console.error('❌ Failed to auto-start quiz:', quiz.name, error);
+          // Continue to next quiz instead of breaking
+          continue;
+        }
+      }
     }
-    return quiz; // Return unchanged quiz
-  });
 
-  // Save all updated quizzes back to storage
-  if (startedQuiz) {
-    console.log('💾 Saving updated quizzes to storage...');
-    localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(updatedQuizzes));
-    
-    // Also set as active quiz
-    setActiveQuiz(startedQuiz);
-    console.log('🎯 Active quiz set:', startedQuiz.name);
+    return startedQuiz;
+  } catch (error) {
+    console.error('Error in checkScheduledQuizzes:', error);
+    return null;
   }
-
-  return startedQuiz;
 };
-// Add this debug function to storage.js
-export const debugQuizStatus = () => {
-  const activeQuiz = getActiveQuiz();
-  const allQuizzes = getQuizzes();
+
+// Temporary function to force start a scheduled quiz
+export const forceStartScheduledQuiz = async (quizId) => {
+  const quizzes = await getQuizzes();
+  const quiz = quizzes.find(q => q.id === quizId);
+  
+  if (quiz && quiz.status === 'scheduled') {
+    return await setActiveQuiz(quiz);
+  }
+  
+  return null;
+};
+
+// Debug function
+export const debugQuizStatus = async () => {
+  const activeQuiz = await getActiveQuiz();
+  const allQuizzes = await getQuizzes();
   const scheduledQuizzes = allQuizzes.filter(q => q.status === 'scheduled');
   const activeQuizzes = allQuizzes.filter(q => q.status === 'active');
   
   console.log('=== 🎯 QUIZ DEBUG INFO ===');
-  console.log('📍 Active Quiz in localStorage:', activeQuiz);
+  console.log('📍 Active Quiz:', activeQuiz);
   console.log('📊 All Quizzes:', allQuizzes.length);
   console.log('⏰ Scheduled Quizzes:', scheduledQuizzes.length);
   console.log('🎯 Active Quizzes in list:', activeQuizzes.length);
   console.log('🕒 Current Time:', new Date().toLocaleString());
+  console.log('💾 Storage Mode:', STORAGE_MODE);
   
   if (activeQuiz) {
     console.log('✅ Active Quiz Details:', {
@@ -228,35 +352,8 @@ export const debugQuizStatus = () => {
   });
   console.log('========================');
 };
-// Temporary function to force start a scheduled quiz
-export const forceStartScheduledQuiz = (quizId) => {
-  const quizzes = getQuizzes();
-  const quiz = quizzes.find(q => q.id === quizId);
-  
-  if (quiz && quiz.status === 'scheduled') {
-    const activeQuiz = {
-      ...quiz,
-      startTime: Date.now(),
-      status: 'active'
-    };
-    
-    // Update the quiz in the list
-    const updatedQuizzes = quizzes.map(q => 
-      q.id === quizId ? activeQuiz : q
-    );
-    
-    localStorage.setItem(STORAGE_KEYS.QUIZZES, JSON.stringify(updatedQuizzes));
-    setActiveQuiz(activeQuiz);
-    
-    console.log('🚀 FORCE STARTED QUIZ:', activeQuiz.name);
-    return activeQuiz;
-  }
-  
-  return null;
-};
-// Add this to storage.js
+
 export const inspectQuizData = (quizId) => {
-  const quiz = getQuizzes().find(q => q.id === quizId);
-  console.log('🔍 Quiz Inspection:', quiz);
-  return quiz;
+  console.log('Quiz inspection not fully implemented for quizId:', quizId);
+  return null;
 };

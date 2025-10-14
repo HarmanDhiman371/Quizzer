@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { getActiveQuiz, getQuizzes, saveQuizResult, hasStudentAttempted, markStudentAttempted, checkScheduledQuizzes, debugQuizStatus, forceStartScheduledQuiz } from '../utils/storage';
+import { 
+  getActiveQuiz, 
+  getQuizzes, 
+  saveQuizResult, 
+  hasStudentAttempted, 
+  markStudentAttempted, 
+  checkScheduledQuizzes, 
+  debugQuizStatus, 
+  forceStartScheduledQuiz,
+  onActiveQuizChange,
+  onQuizResultsChange 
+} from '../utils/storage';
 import { QuizSynchronizer } from '../utils/quizSync';
 import Timer from './Timer';
 import QuizResults from './QuizResults';
@@ -17,6 +28,7 @@ function StudentQuiz() {
   const [studentStartTime, setStudentStartTime] = useState(null);
   const [missedQuestions, setMissedQuestions] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Check connection status
@@ -33,10 +45,29 @@ function StudentQuiz() {
   }, []);
 
   useEffect(() => {
+    // Real-time listener for active quiz
+    const unsubscribe = onActiveQuizChange((activeQuiz) => {
+      console.log('🎯 Active quiz update:', activeQuiz);
+      if (activeQuiz && activeQuiz.status === 'active') {
+        setQuiz(activeQuiz);
+      } else {
+        setQuiz(null);
+      }
+      setLoading(false);
+    });
+
+    // Load initial data
+    loadInitialData();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
-      checkActiveQuiz();
       checkScheduledQuizzesList();
-    }, 2000);
+    }, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -50,39 +81,33 @@ function StudentQuiz() {
     }
   }, [quizStarted, studentStartTime]);
 
-  const checkActiveQuiz = () => {
-    console.log('🔄 Checking for active quiz...');
-    
-    // Force check and auto-start scheduled quizzes
-    const startedQuiz = checkScheduledQuizzes();
-    
-    const activeQuiz = getActiveQuiz();
-    
-    console.log('🔍 Active quiz found:', activeQuiz ? activeQuiz.name : 'null');
-    
-    if (activeQuiz && activeQuiz.status === 'active') {
-      console.log('✅ Setting active quiz in state:', activeQuiz.name);
-      setQuiz(activeQuiz);
-    } else {
-      console.log('❌ No active quiz found');
-      setQuiz(null);
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
+      await checkScheduledQuizzes(); // Check for scheduled quizzes that should start
+      await checkScheduledQuizzesList(); // Load scheduled quizzes
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+      setLoading(false);
     }
-    
-    // Debug info
-    debugQuizStatus();
   };
 
-  const checkScheduledQuizzesList = () => {
-    const allQuizzes = getQuizzes();
-    const now = Date.now();
-    
-    const scheduled = allQuizzes.filter(q => 
-      q.scheduledTime && 
-      q.scheduledTime > now && 
-      q.status === 'scheduled'
-    );
-    
-    setScheduledQuizzes(scheduled);
+  const checkScheduledQuizzesList = async () => {
+    try {
+      const allQuizzes = await getQuizzes();
+      const now = Date.now();
+      
+      const scheduled = allQuizzes.filter(q => 
+        q.scheduledTime && 
+        q.scheduledTime > now && 
+        q.status === 'scheduled'
+      );
+      
+      setScheduledQuizzes(scheduled);
+    } catch (error) {
+      console.error('Error checking scheduled quizzes:', error);
+    }
   };
 
   const syncWithQuiz = () => {
@@ -105,50 +130,65 @@ function StudentQuiz() {
     }
   };
 
-  const startQuiz = () => {
+  const startQuiz = async () => {
     if (!studentName.trim()) {
       alert('Please enter your name');
       return;
     }
 
-    const activeQuiz = getActiveQuiz();
-    if (!activeQuiz) {
-      alert('No active quiz found');
-      return;
-    }
+    try {
+      const activeQuiz = await getActiveQuiz();
+      if (!activeQuiz) {
+        alert('No active quiz found');
+        return;
+      }
 
-    const { canJoin, reason, missedQuestions: missed } = QuizSynchronizer.canStudentJoin(activeQuiz, studentName);
-    
-    if (!canJoin) {
-      alert(`Cannot join quiz: ${reason}`);
-      return;
-    }
+      const { canJoin, reason, missedQuestions: missed } = QuizSynchronizer.canStudentJoin(activeQuiz, studentName);
+      
+      if (!canJoin) {
+        alert(`Cannot join quiz: ${reason}`);
+        return;
+      }
 
-    if (hasStudentAttempted(activeQuiz.id, studentName)) {
-      alert('You have already attempted this quiz!');
-      return;
-    }
+      if (hasStudentAttempted(activeQuiz.id, studentName)) {
+        alert('You have already attempted this quiz!');
+        return;
+      }
 
-    setMissedQuestions(missed);
-    setStudentStartTime(Date.now());
-    setShowFullScreenModal(true);
+      setMissedQuestions(missed);
+      setStudentStartTime(Date.now());
+      setShowFullScreenModal(true);
+    } catch (error) {
+      console.error('Error starting quiz:', error);
+      alert('Error starting quiz. Please try again.');
+    }
   };
 
-  const handleFullScreenConfirm = () => {
-    const activeQuiz = getActiveQuiz();
-    const currentIndex = QuizSynchronizer.getCurrentQuestionIndex(activeQuiz);
-    
-    // Initialize answers array with missed questions as empty
-    const initialAnswers = new Array(activeQuiz.questions.length).fill(null);
-    for (let i = 0; i < missedQuestions; i++) {
-      initialAnswers[i] = ''; // Mark missed questions as unanswered
-    }
+  const handleFullScreenConfirm = async () => {
+    try {
+      const activeQuiz = await getActiveQuiz();
+      if (!activeQuiz) {
+        alert('Quiz no longer available');
+        return;
+      }
 
-    setAnswers(initialAnswers);
-    setCurrentQuestionIndex(currentIndex);
-    setQuizStarted(true);
-    setShowFullScreenModal(false);
-    markStudentAttempted(activeQuiz.id, studentName);
+      const currentIndex = QuizSynchronizer.getCurrentQuestionIndex(activeQuiz);
+      
+      // Initialize answers array with missed questions as empty
+      const initialAnswers = new Array(activeQuiz.questions.length).fill(null);
+      for (let i = 0; i < missedQuestions; i++) {
+        initialAnswers[i] = ''; // Mark missed questions as unanswered
+      }
+
+      setAnswers(initialAnswers);
+      setCurrentQuestionIndex(currentIndex);
+      setQuizStarted(true);
+      setShowFullScreenModal(false);
+      markStudentAttempted(activeQuiz.id, studentName);
+    } catch (error) {
+      console.error('Error confirming fullscreen:', error);
+      alert('Error joining quiz. Please try again.');
+    }
   };
 
   const handleAnswer = (answer) => {
@@ -165,32 +205,40 @@ function StudentQuiz() {
     setAnswers(newAnswers);
   };
 
-  const finishQuiz = () => {
-    const activeQuiz = getActiveQuiz();
-    if (!activeQuiz) return;
+  const finishQuiz = async () => {
+    try {
+      const activeQuiz = await getActiveQuiz();
+      if (!activeQuiz) {
+        console.error('No active quiz found when finishing');
+        return;
+      }
 
-    const score = calculateScore();
-    const result = {
-      studentName: studentName.trim(),
-      score,
-      totalQuestions: activeQuiz.questions.length,
-      percentage: Math.round((score / activeQuiz.questions.length) * 100),
-      timestamp: Date.now(),
-      quizId: activeQuiz.id,
-      quizName: activeQuiz.name,
-      quizClass: activeQuiz.class,
-      missedQuestions,
-      answers: answers.map((answer, index) => ({
-        question: activeQuiz.questions[index]?.question || 'Missed question',
-        studentAnswer: answer,
-        correctAnswer: activeQuiz.questions[index]?.correctAnswer || '',
-        isCorrect: answer === activeQuiz.questions[index]?.correctAnswer,
-        wasMissed: index < missedQuestions
-      }))
-    };
+      const score = calculateScore();
+      const result = {
+        studentName: studentName.trim(),
+        score,
+        totalQuestions: activeQuiz.questions.length,
+        percentage: Math.round((score / activeQuiz.questions.length) * 100),
+        timestamp: Date.now(),
+        quizId: activeQuiz.id,
+        quizName: activeQuiz.name,
+        quizClass: activeQuiz.class,
+        missedQuestions,
+        answers: answers.map((answer, index) => ({
+          question: activeQuiz.questions[index]?.question || 'Missed question',
+          studentAnswer: answer,
+          correctAnswer: activeQuiz.questions[index]?.correctAnswer || '',
+          isCorrect: answer === activeQuiz.questions[index]?.correctAnswer,
+          wasMissed: index < missedQuestions
+        }))
+      };
 
-    saveQuizResult(result);
-    setQuizCompleted(true);
+      await saveQuizResult(result);
+      setQuizCompleted(true);
+    } catch (error) {
+      console.error('Error finishing quiz:', error);
+      alert('Error submitting quiz. Please try again.');
+    }
   };
 
   const calculateScore = () => {
@@ -209,22 +257,36 @@ function StudentQuiz() {
     alert(`Quiz "${scheduledQuiz.name}" is scheduled for ${new Date(scheduledQuiz.scheduledTime).toLocaleString()}`);
   };
 
-  const handleEmergencyFix = () => {
-    // Get all scheduled quizzes that should have started
-    const allQuizzes = getQuizzes();
-    const stuckQuizzes = allQuizzes.filter(q => 
-      q.status === 'scheduled' && q.scheduledTime <= Date.now()
-    );
-    
-    if (stuckQuizzes.length > 0) {
-      stuckQuizzes.forEach(quiz => {
-        console.log('🛠️ Fixing stuck quiz:', quiz.name);
-        forceStartScheduledQuiz(quiz.id);
-      });
-      alert(`Fixed ${stuckQuizzes.length} stuck quizzes!`);
-      checkActiveQuiz(); // Refresh
-    } else {
-      alert('No stuck quizzes found');
+  const handleEmergencyFix = async () => {
+    try {
+      // Get all scheduled quizzes that should have started
+      const allQuizzes = await getQuizzes();
+      const stuckQuizzes = allQuizzes.filter(q => 
+        q.status === 'scheduled' && q.scheduledTime <= Date.now()
+      );
+      
+      if (stuckQuizzes.length > 0) {
+        for (const quiz of stuckQuizzes) {
+          console.log('🛠️ Fixing stuck quiz:', quiz.name);
+          await forceStartScheduledQuiz(quiz.id);
+        }
+        alert(`Fixed ${stuckQuizzes.length} stuck quizzes!`);
+        await checkScheduledQuizzesList(); // Refresh
+      } else {
+        alert('No stuck quizzes found');
+      }
+    } catch (error) {
+      console.error('Error in emergency fix:', error);
+      alert('Error fixing quizzes. Please check console.');
+    }
+  };
+
+  const handleDebugStatus = async () => {
+    try {
+      await debugQuizStatus();
+      await checkScheduledQuizzesList();
+    } catch (error) {
+      console.error('Error in debug:', error);
     }
   };
 
@@ -240,12 +302,26 @@ function StudentQuiz() {
   return renderHomePage();
 
   function renderHomePage() {
+    if (loading) {
+      return (
+        <div className="student-home">
+          <div className="home-container">
+            <div className="loading-state">
+              <div className="loader"></div>
+              <h3>Loading Quiz Data...</h3>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="student-home">
         <div className="home-container">
           <div className="home-header">
             <h1>EBI Quiz</h1>
             <p>Test your knowledge with interactive quizzes</p>
+            <div className="realtime-badge">🔥 Live Updates</div>
           </div>
 
           {/* Active Quiz Section */}
@@ -355,41 +431,11 @@ function StudentQuiz() {
           )}
 
           {/* Debug Section */}
-          <div className="debug-section" style={{ marginTop: '20px', textAlign: 'center' }}>
-            <button 
-              onClick={() => {
-                debugQuizStatus();
-                checkActiveQuiz();
-                checkScheduledQuizzesList();
-              }}
-              style={{
-                padding: '8px 16px',
-                background: '#6366f1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                margin: '5px',
-                fontSize: '12px'
-              }}
-            >
+          <div className="debug-section">
+            <button onClick={handleDebugStatus} className="debug-btn">
               Debug Quiz Status
             </button>
-            
-            <button 
-              onClick={handleEmergencyFix}
-              style={{
-                padding: '8px 16px',
-                background: '#ef4444',
-                color: 'white',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                margin: '5px',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}
-            >
+            <button onClick={handleEmergencyFix} className="emergency-btn">
               🛠️ Fix Stuck Quizzes
             </button>
           </div>

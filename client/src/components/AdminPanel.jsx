@@ -29,56 +29,90 @@ function AdminPanel() {
     return () => clearInterval(interval);
   }, [selectedClass]);
 
-  const loadData = () => {
-    loadActiveQuiz();
-    loadResults();
-    loadClasses();
-    loadTopStudents();
-    loadAllQuizzes();
-    if (selectedClass) {
-      loadClassQuizzes();
+  const loadData = async () => {
+    try {
+      await loadActiveQuiz();
+      await loadResults();
+      loadClasses();
+      await loadTopStudents();
+      await loadAllQuizzes();
+      if (selectedClass) {
+        await loadClassQuizzes();
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
     }
   };
 
-  const loadActiveQuiz = () => {
-    const active = getActiveQuiz();
-    setActiveQuizState(active);
+  const loadActiveQuiz = async () => {
+    try {
+      const active = await getActiveQuiz();
+      setActiveQuizState(active);
+    } catch (error) {
+      console.error('Error loading active quiz:', error);
+      setActiveQuizState(null);
+    }
   };
 
-  const loadResults = () => {
-    const quizResults = getQuizResults();
-    setResults(quizResults);
-    
-    if (activeQuiz) {
-      const participants = quizResults.filter(r => 
-        r.quizId === activeQuiz.id && 
-        Date.now() - r.timestamp < 300000
-      ).length;
-      setLiveParticipants(participants);
+  const loadResults = async () => {
+    try {
+      const quizResults = await getQuizResults();
+      setResults(quizResults);
+      
+      if (activeQuiz) {
+        const participants = quizResults.filter(r => 
+          r.quizId === activeQuiz.id && 
+          Date.now() - r.timestamp < 300000
+        ).length;
+        setLiveParticipants(participants);
+      }
+    } catch (error) {
+      console.error('Error loading results:', error);
+      setResults([]);
     }
   };
 
   const loadClasses = () => {
-    const classList = getQuizClasses();
-    setClasses(classList);
-    if (classList.length > 0 && !selectedClass) {
-      setSelectedClass(classList[0]);
+    try {
+      const classList = getQuizClasses();
+      setClasses(classList);
+      if (classList.length > 0 && !selectedClass) {
+        setSelectedClass(classList[0]);
+      }
+    } catch (error) {
+      console.error('Error loading classes:', error);
+      setClasses([]);
     }
   };
 
-  const loadAllQuizzes = () => {
-    const quizzes = getQuizzes();
-    setAllQuizzes(quizzes);
+  const loadAllQuizzes = async () => {
+    try {
+      const quizzes = await getQuizzes();
+      setAllQuizzes(quizzes);
+    } catch (error) {
+      console.error('Error loading all quizzes:', error);
+      setAllQuizzes([]);
+    }
   };
 
-  const loadClassQuizzes = () => {
-    const quizzes = getQuizzesByClass(selectedClass);
-    setClassQuizzes(quizzes);
+  const loadClassQuizzes = async () => {
+    try {
+      const quizzes = await getQuizzesByClass(selectedClass);
+      setClassQuizzes(quizzes);
+    } catch (error) {
+      console.error('Error loading class quizzes:', error);
+      setClassQuizzes([]);
+    }
   };
 
-  const loadTopStudents = () => {
-    const top = getOverallTopStudents(5);
-    setTopStudents(top);
+  const loadTopStudents = async () => {
+    try {
+      const top = await getOverallTopStudents(5);
+      setTopStudents(top);
+    } catch (error) {
+      console.error('Error loading top students:', error);
+      setTopStudents([]);
+    }
   };
 
   const handleParseMCQ = () => {
@@ -97,85 +131,153 @@ function AdminPanel() {
     }
   };
 
-  const handleStartQuiz = () => {
+  const handleStartQuiz = async () => {
     if (!quiz) return;
     
-    const quizToStart = {
-      ...quiz,
-      id: Date.now().toString(),
-      startTime: Date.now(),
-      status: 'active'
-    };
+    try {
+      const quizToStart = {
+        ...quiz,
+        id: Date.now().toString(),
+        startTime: Date.now(),
+        status: 'active'
+      };
+      
+      const startedQuiz = await setActiveQuiz(quizToStart);
+      setActiveQuizState(startedQuiz);
+      setActiveTab('live');
+      alert('🚀 Quiz started successfully! Students can now join.');
+    } catch (error) {
+      console.error('Error starting quiz:', error);
+      alert('Error starting quiz. Please try again.');
+    }
+  };
+
+  const handleScheduleQuiz = async () => {
+    if (!quiz || !scheduledTime) {
+      alert('Please set a schedule time first');
+      return;
+    }
     
-    const startedQuiz = setActiveQuiz(quizToStart);
-    setActiveQuizState(startedQuiz);
-    setActiveTab('live');
-    alert('🚀 Quiz started successfully! Students can now join.');
+    const scheduleTime = new Date(scheduledTime).getTime();
+    const now = Date.now();
+    
+    if (scheduleTime <= now) {
+      alert('Scheduled time must be in future');
+      return;
+    }
+
+    try {
+      const scheduledQuiz = {
+        ...quiz,
+        id: Date.now().toString(),
+        scheduledTime: scheduleTime,
+        status: 'scheduled'
+      };
+      
+      await saveQuiz(scheduledQuiz);
+      setActiveTab('classes');
+      
+      alert(`✅ Quiz scheduled for ${new Date(scheduleTime).toLocaleString()}`);
+      
+      // Clear the form
+      setMcqText('');
+      setQuizName('');
+      setQuizClass('');
+      setScheduledTime('');
+      setQuiz(null);
+    } catch (error) {
+      console.error('Error scheduling quiz:', error);
+      alert('Error scheduling quiz. Please try again.');
+    }
   };
 
- const handleScheduleQuiz = () => {
-  if (!quiz || !scheduledTime) {
-    alert('Please set a schedule time first');
-    return;
-  }
-  
-  const scheduleTime = new Date(scheduledTime).getTime();
-  const now = Date.now();
-  
-  if (scheduleTime <= now) {
-    alert('Scheduled time must be in future');
-    return;
-  }
-
-  const scheduledQuiz = {
-    ...quiz,
-    id: Date.now().toString(),
-    scheduledTime: scheduleTime,
-    status: 'scheduled'
-  };
-  
-  saveQuiz(scheduledQuiz);
-  setActiveTab('classes');
-  
-  alert(`✅ Quiz scheduled for ${new Date(scheduleTime).toLocaleString()}`);
-  
-  // Clear the form
-  setMcqText('');
-  setQuizName('');
-  setQuizClass('');
-  setScheduledTime('');
-  setQuiz(null);
-};
-
-  const handleEndQuiz = () => {
-    clearActiveQuiz();
-    setActiveQuizState(null);
-    loadData();
-    alert('⏹️ Quiz ended successfully!');
+  const handleEndQuiz = async () => {
+    try {
+      await clearActiveQuiz();
+      setActiveQuizState(null);
+      await loadData();
+      alert('⏹️ Quiz ended successfully!');
+    } catch (error) {
+      console.error('Error ending quiz:', error);
+      alert('Error ending quiz. Please try again.');
+    }
   };
 
-  const handleDeleteQuiz = (quizId) => {
+  const handleDeleteQuiz = async (quizId) => {
     if (window.confirm('Are you sure you want to delete this quiz and all its results?')) {
-      deleteQuiz(quizId);
-      deleteQuizResults(quizId);
-      loadData();
-      alert('🗑️ Quiz deleted successfully!');
+      try {
+        await deleteQuiz(quizId);
+        await deleteQuizResults(quizId);
+        await loadData();
+        alert('🗑️ Quiz deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting quiz:', error);
+        alert('Error deleting quiz. Please try again.');
+      }
     }
   };
 
   const getLiveProgress = () => {
-    if (!activeQuiz) return {};
+    if (!activeQuiz || !activeQuiz.questions || !activeQuiz.startTime) {
+      return { progress: 0, currentQuestion: 0, totalQuestions: 0 };
+    }
     
     const now = Date.now();
     const elapsed = now - activeQuiz.startTime;
-    const totalDuration = activeQuiz.questions.length * activeQuiz.timePerQuestion * 1000;
+    const totalDuration = activeQuiz.questions.length * (activeQuiz.timePerQuestion || 30) * 1000;
     const progress = Math.min(100, (elapsed / totalDuration) * 100);
-    const currentQuestion = Math.floor(elapsed / (activeQuiz.timePerQuestion * 1000)) + 1;
+    const currentQuestion = Math.floor(elapsed / ((activeQuiz.timePerQuestion || 30) * 1000)) + 1;
     
-    return { progress, currentQuestion, totalQuestions: activeQuiz.questions.length };
+    return { 
+      progress, 
+      currentQuestion: Math.min(currentQuestion, activeQuiz.questions.length), 
+      totalQuestions: activeQuiz.questions.length 
+    };
   };
 
   const { progress, currentQuestion, totalQuestions } = getLiveProgress();
+
+  // Early return if no active quiz in live tab
+  if (activeTab === 'live' && !activeQuiz) {
+    return (
+      <div className="admin-panel">
+        <div className="admin-header">
+          <div className="header-tabs">
+            <button 
+              className={`tab-btn ${activeTab === 'create' ? 'active' : ''}`}
+              onClick={() => setActiveTab('create')}
+            >
+              🎯 Create Quiz
+            </button>
+            <button 
+              className={`tab-btn ${activeTab === 'classes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('classes')}
+            >
+              📚 Classes & Quizzes
+            </button>
+            <button 
+              className={`tab-btn ${activeTab === 'live' ? 'active' : ''}`}
+              onClick={() => setActiveTab('live')}
+            >
+              📊 Live Monitoring
+            </button>
+            <button 
+              className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+              onClick={() => setActiveTab('analytics')}
+            >
+              📈 Analytics
+            </button>
+          </div>
+        </div>
+        <div className="admin-content">
+          <div className="no-active-quiz">
+            <h3>No Active Quiz</h3>
+            <p>Start a quiz from the Create Quiz tab to see live monitoring.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-panel">
@@ -295,15 +397,15 @@ Correct: C`}
 
               {quiz && (
                 <div className="quiz-preview">
-                  <h4>Quiz Preview ({quiz.questions.length} questions)</h4>
+                  <h4>Quiz Preview ({quiz.questions?.length || 0} questions)</h4>
                   <div className="preview-questions">
-                    {quiz.questions.slice(0, 3).map((q, index) => (
+                    {quiz.questions?.slice(0, 3).map((q, index) => (
                       <div key={index} className="preview-question">
                         <strong>Q{index + 1}:</strong> {q.question}
                         <div className="correct-answer">Correct: {q.correctAnswer}</div>
                       </div>
                     ))}
-                    {quiz.questions.length > 3 && (
+                    {quiz.questions && quiz.questions.length > 3 && (
                       <div className="more-questions">+ {quiz.questions.length - 3} more questions</div>
                     )}
                   </div>
@@ -335,7 +437,7 @@ Correct: C`}
 
               <div className="classes-grid">
                 {classes.map(className => {
-                  const classQuizzes = getQuizzesByClass(className);
+                  const classQuizzes = allQuizzes.filter(q => q.class === className);
                   const activeQuiz = classQuizzes.find(q => q.status === 'active');
                   const scheduledQuizzes = classQuizzes.filter(q => q.status === 'scheduled');
                   const pastQuizzes = classQuizzes.filter(q => !q.status || q.status === 'completed');
@@ -402,9 +504,9 @@ Correct: C`}
                 <h4>All Quizzes</h4>
                 <div className="quizzes-table">
                   {allQuizzes.map(quiz => {
-                    const quizResults = getResultsByQuiz(quiz.id);
+                    const quizResults = results.filter(r => r.quizId === quiz.id);
                     const avgScore = quizResults.length > 0 
-                      ? Math.round(quizResults.reduce((sum, r) => sum + r.percentage, 0) / quizResults.length)
+                      ? Math.round(quizResults.reduce((sum, r) => sum + (r.percentage || 0), 0) / quizResults.length)
                       : 0;
                     
                     return (
@@ -415,7 +517,7 @@ Correct: C`}
                         </div>
                         <div className="quiz-stats">
                           <span>{quiz.questions?.length || 0} Qs</span>
-                          <span>{quiz.timePerQuestion}s/Q</span>
+                          <span>{quiz.timePerQuestion || 30}s/Q</span>
                         </div>
                         <div className="quiz-status">
                           {quiz.status === 'active' && <span className="status-live">LIVE</span>}
@@ -450,70 +552,67 @@ Correct: C`}
         )}
 
         {/* Live Monitoring Tab */}
-        {activeTab === 'live' && (
+        {activeTab === 'live' && activeQuiz && (
           <div className="tab-content">
-            {activeQuiz ? (
-              <div className="live-monitoring">
-                <div className="live-header">
-                  <h3>Live Quiz: {activeQuiz.name}</h3>
-                  <button onClick={handleEndQuiz} className="btn-danger">
-                    ⏹️ End Quiz
-                  </button>
-                </div>
+            <div className="live-monitoring">
+              <div className="live-header">
+                <h3>Live Quiz: {activeQuiz.name}</h3>
+                <button onClick={handleEndQuiz} className="btn-danger">
+                  ⏹️ End Quiz
+                </button>
+              </div>
 
-                <div className="live-stats-grid">
-                  <div className="stat-card">
-                    <div className="stat-value">{liveParticipants}</div>
-                    <div className="stat-label">Live Participants</div>
+              <div className="live-stats-grid">
+                <div className="stat-card">
+                  <div className="stat-value">{liveParticipants}</div>
+                  <div className="stat-label">Live Participants</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{currentQuestion}/{totalQuestions}</div>
+                  <div className="stat-label">Current Question</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{activeQuiz.timePerQuestion || 30}s</div>
+                  <div className="stat-label">Time per Question</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">
+                    {Math.round(progress)}%
                   </div>
-                  <div className="stat-card">
-                    <div className="stat-value">{currentQuestion}/{totalQuestions}</div>
-                    <div className="stat-label">Current Question</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-value">{activeQuiz.timePerQuestion}s</div>
-                    <div className="stat-label">Time per Question</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-value">
-                      {Math.round(progress)}%
+                  <div className="stat-label">Progress</div>
+                </div>
+              </div>
+
+              <div className="progress-container">
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="live-results">
+                <h4>Live Results</h4>
+                <div className="results-table">
+                  {getResultsByQuiz(activeQuiz.id)
+                    ?.sort((a, b) => (b.score || 0) - (a.score || 0))
+                    .map((result, index) => (
+                    <div key={index} className="result-row">
+                      <div className="rank">#{index + 1}</div>
+                      <div className="student-name">{result.studentName}</div>
+                      <div className="score">{result.score || 0}/{result.totalQuestions || 0}</div>
+                      <div className="percentage">{result.percentage || 0}%</div>
+                      <div className="missed">{result.missedQuestions || 0} missed</div>
                     </div>
-                    <div className="stat-label">Progress</div>
-                  </div>
-                </div>
-
-                <div className="progress-container">
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div className="live-results">
-                  <h4>Live Results</h4>
-                  <div className="results-table">
-                    {getResultsByQuiz(activeQuiz.id)
-                      .sort((a, b) => b.score - a.score)
-                      .map((result, index) => (
-                      <div key={index} className="result-row">
-                        <div className="rank">#{index + 1}</div>
-                        <div className="student-name">{result.studentName}</div>
-                        <div className="score">{result.score}/{result.totalQuestions}</div>
-                        <div className="percentage">{result.percentage}%</div>
-                        <div className="missed">{result.missedQuestions} missed</div>
-                      </div>
-                    ))}
-                  </div>
+                  )) || (
+                    <div className="no-results">
+                      <p>No results yet</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="no-active-quiz">
-                <h3>No Active Quiz</h3>
-                <p>Start a quiz from the Create Quiz tab to see live monitoring.</p>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -533,7 +632,7 @@ Correct: C`}
                         <div className="performer-info">
                           <div className="performer-name">{student.name}</div>
                           <div className="performer-stats">
-                            {student.averagePercentage}% avg • {student.totalQuizzes} quizzes
+                            {student.averagePercentage || 0}% avg • {student.totalQuizzes || 0} quizzes
                           </div>
                         </div>
                       </div>
@@ -568,12 +667,12 @@ Correct: C`}
                 <h4>Recent Activity</h4>
                 <div className="activity-list">
                   {results
-                    .sort((a, b) => b.timestamp - a.timestamp)
+                    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
                     .slice(0, 10)
                     .map((result, index) => (
                     <div key={index} className="activity-item">
                       <div className="activity-info">
-                        <strong>{result.studentName}</strong> scored {result.percentage}% in {result.quizName}
+                        <strong>{result.studentName}</strong> scored {result.percentage || 0}% in {result.quizName}
                       </div>
                       <div className="activity-time">
                         {new Date(result.timestamp).toLocaleString()}

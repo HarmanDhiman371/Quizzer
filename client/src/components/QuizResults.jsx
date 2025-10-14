@@ -1,19 +1,35 @@
-import React from 'react';
-import { getQuizResults } from '../utils/storage';
+import React, { useState, useEffect } from 'react';
+import { getQuizResults, getOverallTopStudents } from '../utils/storage';
 
-function QuizResults({ results, total, quizId }) {
-  const allResults = getQuizResults().filter(r => r.quizId === quizId);
-  
-  const topStudents = allResults
-    .map(result => ({
-      ...result,
-      speedScore: result.answers.reduce((total, answer) => total + (answer.timeTaken || 0), 0)
-    }))
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.speedScore - b.speedScore;
-    })
-    .slice(0, 5);
+function QuizResults({ results, total, quizId, missedQuestions }) {
+  const [allResults, setAllResults] = useState([]);
+  const [topStudents, setTopStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadResults();
+  }, [quizId]);
+
+  const loadResults = async () => {
+    try {
+      setLoading(true);
+      
+      // Load results for this specific quiz
+      const quizResults = await getQuizResults(quizId);
+      setAllResults(quizResults || []);
+      
+      // Load top students
+      const top = await getOverallTopStudents(5);
+      setTopStudents(top || []);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading results:', error);
+      setAllResults([]);
+      setTopStudents([]);
+      setLoading(false);
+    }
+  };
 
   const percentage = Math.round((results / total) * 100);
   const getGrade = (perc) => {
@@ -25,6 +41,19 @@ function QuizResults({ results, total, quizId }) {
   };
 
   const gradeInfo = getGrade(percentage);
+
+  if (loading) {
+    return (
+      <div className="quiz-results">
+        <div className="results-container">
+          <div className="loading-state">
+            <div className="loader"></div>
+            <h3>Loading Results...</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="quiz-results">
@@ -46,27 +75,62 @@ function QuizResults({ results, total, quizId }) {
           <div className="score-details">
             <h3>Your Score</h3>
             <p>{results} out of {total} correct</p>
+            {missedQuestions > 0 && (
+              <p className="missed-info">{missedQuestions} questions missed (joined late)</p>
+            )}
           </div>
         </div>
 
         <div className="top-performers-section">
           <h3>🏆 Top 5 Performers</h3>
           <div className="leaderboard">
-            {topStudents.map((student, index) => (
-              <div key={index} className={`leaderboard-item ${index === 0 ? 'first' : ''}`}>
-                <div className="rank-medal">
-                  {index === 0 && '🥇'}
-                  {index === 1 && '🥈'}
-                  {index === 2 && '🥉'}
-                  {index > 2 && `#${index + 1}`}
+            {topStudents.length > 0 ? (
+              topStudents.map((student, index) => (
+                <div key={index} className={`leaderboard-item ${index === 0 ? 'first' : ''}`}>
+                  <div className="rank-medal">
+                    {index === 0 && '🥇'}
+                    {index === 1 && '🥈'}
+                    {index === 2 && '🥉'}
+                    {index > 2 && `#${index + 1}`}
+                  </div>
+                  <div className="student-info">
+                    <span className="student-name">{student.name}</span>
+                    <span className="student-score">
+                      {student.averagePercentage || 0}% average • {student.totalQuizzes || 0} quizzes
+                    </span>
+                  </div>
+                  <div className="percentage">{student.averagePercentage || 0}%</div>
                 </div>
-                <div className="student-info">
-                  <span className="student-name">{student.studentName}</span>
-                  <span className="student-score">{student.score}/{student.totalQuestions}</span>
-                </div>
-                <div className="percentage">{student.percentage}%</div>
+              ))
+            ) : (
+              <div className="no-results">
+                <p>No top performers data available</p>
               </div>
-            ))}
+            )}
+          </div>
+        </div>
+
+        <div className="your-performance">
+          <h3>📊 Your Performance</h3>
+          <div className="performance-stats">
+            <div className="stat">
+              <span>Your Score</span>
+              <strong>{results}/{total}</strong>
+            </div>
+            <div className="stat">
+              <span>Percentage</span>
+              <strong>{percentage}%</strong>
+            </div>
+            <div className="stat">
+              <span>Grade</span>
+              <strong style={{ color: gradeInfo.color }}>{gradeInfo.grade}</strong>
+            </div>
+            {missedQuestions > 0 && (
+              <div className="stat">
+                <span>Missed Questions</span>
+                <strong>{missedQuestions}</strong>
+              </div>
+            )}
           </div>
         </div>
 
