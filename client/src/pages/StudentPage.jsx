@@ -1,8 +1,18 @@
 import React from 'react';
-import StudentQuiz from '../components/StudentQuiz';
+import TestStudentInterface from '../components/student/TestStudentInterface';
 
-function StudentPage() {
-  return <StudentQuiz />;
-}
+const StudentPage = () => {
+  return (
+    <div className="student-page">
+      <div className="container">
+        <header className="page-header">
+          <h1>📚 Student Quiz</h1>
+          <p>Test the synchronized quiz experience</p>
+        </header>
+        <TestStudentInterface />
+      </div>
+    </div>
+  );
+};
 
 export default StudentPage;
