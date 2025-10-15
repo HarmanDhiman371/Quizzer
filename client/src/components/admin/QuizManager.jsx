@@ -1,29 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { getQuizzesFromFirestore, deleteQuizFromFirestore, setActiveQuiz, endActiveQuiz } from '../../utils/firestore';
+import { 
+  getQuizzesFromFirestore, 
+  deleteQuizFromFirestore, 
+  setActiveQuiz
+} from '../../utils/firestore';
 
 const QuizManager = () => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
+  const [startingQuiz, setStartingQuiz] = useState(null);
+  const [countdown, setCountdown] = useState(0);
 
   useEffect(() => {
     loadQuizzes();
-    // Refresh every 10 seconds to get updated status
     const interval = setInterval(loadQuizzes, 10000);
     return () => clearInterval(interval);
   }, []);
 
+  // Countdown timer for quiz start
+  useEffect(() => {
+    let timer;
+    if (countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
   const loadQuizzes = async () => {
     try {
       setLoading(true);
-      const allQuizzes = await getQuizzesFromFirestore();
-      
-      // Filter out completed quizzes from the main list
-      const filteredQuizzes = allQuizzes.filter(quiz => 
-        quiz.status !== 'completed'
-      );
-      
-      setQuizzes(filteredQuizzes);
+      const scheduledQuizzes = await getQuizzesFromFirestore();
+      setQuizzes(scheduledQuizzes);
     } catch (error) {
       console.error('Error loading quizzes:', error);
       alert('Error loading quizzes: ' + error.message);
@@ -34,20 +41,30 @@ const QuizManager = () => {
 
   const handleStartQuiz = async (quiz) => {
     try {
-      const quizToStart = {
-        ...quiz,
-        status: 'active',
-        quizStartTime: Date.now(),
-        currentQuestionIndex: 0,
-        totalParticipants: 0
-      };
+      setStartingQuiz(quiz.id);
+      setCountdown(10);
 
-      await setActiveQuiz(quizToStart);
-      alert(`🚀 Started quiz: ${quiz.name}`);
-      await loadQuizzes();
+      // Set quiz to waiting room with 10-second countdown
+      await setActiveQuiz(quiz);
+      
+      // Start the 10-second countdown
+      const countdownInterval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            setStartingQuiz(null);
+            setCountdown(0);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
     } catch (error) {
       console.error('Error starting quiz:', error);
       alert('Error starting quiz: ' + error.message);
+      setStartingQuiz(null);
+      setCountdown(0);
     }
   };
 
@@ -66,59 +83,6 @@ const QuizManager = () => {
     }
   };
 
-  const handleEndActiveQuiz = async () => {
-    try {
-      await endActiveQuiz();
-      alert('⏹️ Active quiz ended!');
-      await loadQuizzes();
-    } catch (error) {
-      console.error('Error ending quiz:', error);
-      alert('Error ending quiz: ' + error.message);
-    }
-  };
-
-  const handleCleanupCompleted = async () => {
-    try {
-      const allQuizzes = await getQuizzesFromFirestore();
-      const completedQuizzes = allQuizzes.filter(quiz => quiz.status === 'completed');
-      
-      for (const quiz of completedQuizzes) {
-        await deleteQuizFromFirestore(quiz.id);
-      }
-      
-      alert(`🗑️ Cleaned up ${completedQuizzes.length} completed quizzes!`);
-      await loadQuizzes();
-    } catch (error) {
-      console.error('Error cleaning up quizzes:', error);
-      alert('Error cleaning up quizzes: ' + error.message);
-    }
-  };
-
-  const filteredQuizzes = quizzes.filter(quiz => {
-    switch (activeTab) {
-      case 'scheduled':
-        return quiz.status === 'scheduled';
-      case 'drafts':
-        return quiz.status === 'draft';
-      case 'completed':
-        return quiz.status === 'completed';
-      default:
-        return true;
-    }
-  });
-
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      active: { label: 'LIVE', class: 'status-live' },
-      scheduled: { label: 'SCHEDULED', class: 'status-scheduled' },
-      draft: { label: 'DRAFT', class: 'status-draft' },
-      completed: { label: 'COMPLETED', class: 'status-completed' }
-    };
-    
-    const config = statusConfig[status] || { label: status, class: 'status-default' };
-    return <span className={`status-badge ${config.class}`}>{config.label}</span>;
-  };
-
   if (loading) {
     return (
       <div className="quiz-manager">
@@ -133,52 +97,37 @@ const QuizManager = () => {
   return (
     <div className="quiz-manager">
       <div className="manager-header">
-        <h3>📚 Quiz Manager</h3>
+        <h3>📚 Quiz Management</h3>
         <div className="manager-actions-header">
+          {countdown > 0 && (
+            <div className="countdown-banner">
+              🚀 Quiz starting in: {countdown}s
+            </div>
+          )}
           <button onClick={loadQuizzes} className="btn btn-secondary">
             🔄 Refresh
-          </button>
-          <button onClick={handleCleanupCompleted} className="btn btn-warning">
-            🧹 Cleanup Completed
           </button>
         </div>
       </div>
 
-      <div className="quiz-tabs">
-        <button 
-          className={`tab-btn ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
-        >
-          All ({quizzes.length})
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'scheduled' ? 'active' : ''}`}
-          onClick={() => setActiveTab('scheduled')}
-        >
-          Scheduled ({quizzes.filter(q => q.status === 'scheduled').length})
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'drafts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('drafts')}
-        >
-          Drafts ({quizzes.filter(q => q.status === 'draft').length})
-        </button>
-      </div>
-
       <div className="quizzes-list">
-        {filteredQuizzes.length === 0 ? (
+        {quizzes.length === 0 ? (
           <div className="empty-state">
-            <p>No quizzes found in this category.</p>
+            <p>No scheduled quizzes found.</p>
+            <p>Create a new quiz in the Create Quiz tab.</p>
           </div>
         ) : (
-          filteredQuizzes.map((quiz) => (
+          quizzes.map((quiz) => (
             <div key={quiz.id} className="quiz-card">
               <div className="quiz-info">
                 <div className="quiz-header">
                   <h4>{quiz.name}</h4>
-                  {getStatusBadge(quiz.status)}
+                  <span className="status-badge status-scheduled">SCHEDULED</span>
+                  {startingQuiz === quiz.id && countdown > 0 && (
+                    <span className="starting-badge">Starting... {countdown}s</span>
+                  )}
                 </div>
-                <p className="quiz-class">{quiz.class}</p>
+                <p className="quiz-class">Class: {quiz.class}</p>
                 <div className="quiz-details">
                   <span>{quiz.questions?.length || 0} questions</span>
                   <span>{quiz.timePerQuestion}s per question</span>
@@ -186,7 +135,7 @@ const QuizManager = () => {
                 </div>
                 {quiz.scheduledTime && (
                   <p className="scheduled-time">
-                    🕒 {new Date(quiz.scheduledTime).toLocaleString()}
+                    🕒 Scheduled for: {new Date(quiz.scheduledTime).toLocaleString()}
                   </p>
                 )}
                 <p className="created-time">
@@ -195,23 +144,13 @@ const QuizManager = () => {
               </div>
               
               <div className="quiz-actions">
-                {quiz.status === 'draft' && (
-                  <button
-                    onClick={() => handleStartQuiz(quiz)}
-                    className="btn btn-success btn-sm"
-                  >
-                    🚀 Start
-                  </button>
-                )}
-                
-                {quiz.status === 'scheduled' && (
-                  <button
-                    onClick={() => handleStartQuiz(quiz)}
-                    className="btn btn-warning btn-sm"
-                  >
-                    ▶️ Start Now
-                  </button>
-                )}
+                <button
+                  onClick={() => handleStartQuiz(quiz)}
+                  disabled={startingQuiz === quiz.id}
+                  className="btn btn-success btn-sm"
+                >
+                  {startingQuiz === quiz.id ? '🕐 Starting...' : '🚀 Start Quiz'}
+                </button>
                 
                 <button
                   onClick={() => handleDeleteQuiz(quiz.id, quiz.name)}
@@ -223,12 +162,6 @@ const QuizManager = () => {
             </div>
           ))
         )}
-      </div>
-
-      <div className="manager-actions">
-        <button onClick={handleEndActiveQuiz} className="btn btn-danger">
-          ⏹️ End Active Quiz
-        </button>
       </div>
     </div>
   );

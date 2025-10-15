@@ -1,49 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
-import { endActiveQuiz, getQuizResultsFromFirestore } from '../../utils/firestore';
+import { endActiveQuiz, listenToQuizResults } from '../../utils/firestore';
 
 const LiveMonitor = () => {
   const { activeQuiz } = useQuiz();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [visibleRange, setVisibleRange] = useState([0, 20]);
+  const listRef = useRef();
 
-  // Use polling instead of real-time listener while index is building
+  // Real-time listener for results
   useEffect(() => {
     if (!activeQuiz?.id) {
       setResults([]);
       return;
     }
 
-    console.log('🎯 Setting up polling for quiz:', activeQuiz.id);
+    console.log('🎯 Setting up real-time listener for quiz:', activeQuiz.id);
     
-    const loadResults = async () => {
-      try {
-        const quizResults = await getQuizResultsFromFirestore(activeQuiz.id);
-        console.log('📊 Polling update:', quizResults.length, 'participants');
-        setResults(quizResults);
-        setLastUpdate(Date.now());
-      } catch (error) {
-        console.error('❌ Error loading results:', error);
-        // If index error, try simple query
-        if (error.code === 'failed-precondition') {
-          console.log('🔄 Index building, using fallback method');
-          setResults([]);
-        }
-      }
-    };
+    const unsubscribe = listenToQuizResults(activeQuiz.id, (quizResults) => {
+      console.log('📊 Real-time update:', quizResults.length, 'participants');
+      setResults(quizResults);
+      setLastUpdate(Date.now());
+    });
 
-    // Load immediately
-    loadResults();
-
-    // Set up polling every 3 seconds
-    const interval = setInterval(loadResults, 3000);
-    
     return () => {
-      console.log('🎯 Cleaning up polling');
-      clearInterval(interval);
+      console.log('🎯 Cleaning up real-time listener');
+      unsubscribe();
     };
   }, [activeQuiz?.id]);
+
+  // Virtual scrolling handler
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!listRef.current) return;
+      
+      const { scrollTop, clientHeight, scrollHeight } = listRef.current;
+      const itemHeight = 60;
+      const startIndex = Math.floor(scrollTop / itemHeight);
+      const endIndex = Math.min(
+        startIndex + Math.ceil(clientHeight / itemHeight) + 5,
+        results.length
+      );
+      
+      setVisibleRange([startIndex, endIndex]);
+    };
+
+    if (listRef.current) {
+      listRef.current.addEventListener('scroll', handleScroll);
+      handleScroll();
+    }
+
+    return () => {
+      if (listRef.current) {
+        listRef.current.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [results.length]);
 
   const handleEndQuiz = async () => {
     if (!window.confirm('Are you sure you want to end the quiz?')) return;
@@ -51,7 +65,7 @@ const LiveMonitor = () => {
     setLoading(true);
     try {
       await endActiveQuiz();
-      alert('✅ Quiz ended successfully!');
+      alert('✅ Quiz ended successfully! Top 5 rankings saved.');
     } catch (error) {
       console.error('Error ending quiz:', error);
       alert('Error ending quiz: ' + error.message);
@@ -60,7 +74,7 @@ const LiveMonitor = () => {
     }
   };
 
-  if (!activeQuiz || activeQuiz.status !== 'active') {
+  if (!activeQuiz) {
     return (
       <div className="live-monitor">
         <div className="no-active-quiz">
@@ -78,16 +92,20 @@ const LiveMonitor = () => {
     )
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 
+  const visibleParticipants = uniqueParticipants.slice(visibleRange[0], visibleRange[1]);
+  const itemHeight = 60;
+  const totalHeight = uniqueParticipants.length * itemHeight;
+  const offsetY = visibleRange[0] * itemHeight;
+
   return (
     <div className="live-monitor">
       <div className="monitor-header">
         <div>
           <h3>📊 Live: {activeQuiz.name}</h3>
+          <p className="quiz-class">Class: {activeQuiz.class}</p>
           <p className="last-update">
             Last updated: {new Date(lastUpdate).toLocaleTimeString()} 
-            {results.length > uniqueParticipants.length && 
-              ` • ${results.length - uniqueParticipants.length} duplicates filtered`
-            }
+            <span className="real-time-indicator"> • 🔴 LIVE</span>
           </p>
         </div>
         <button 
@@ -95,7 +113,7 @@ const LiveMonitor = () => {
           disabled={loading}
           className="btn btn-danger"
         >
-          {loading ? 'Ending...' : '⏹️ End Quiz'}
+          {loading ? 'Ending...' : '⏹️ End Quiz & Save Rankings'}
         </button>
       </div>
 
@@ -126,54 +144,47 @@ const LiveMonitor = () => {
         {uniqueParticipants.length === 0 ? (
           <div className="empty-state">
             <p>No participants yet. Waiting for students to join...</p>
-            <p className="info-text">
-              <small>📝 Index is building... Live updates every 3 seconds</small>
-            </p>
           </div>
         ) : (
-          <div className="results-table">
-            <div className="table-header">
-              <span>Rank</span>
-              <span>Student</span>
-              <span>Score</span>
-              <span>Percentage</span>
-              <span>Status</span>
-            </div>
-            {uniqueParticipants.map((result, index) => (
-              <div key={result.id} className={`table-row ${index < 3 ? 'top-three' : ''}`}>
-                <span className="rank">
-                  {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                </span>
-                <span className="student">{result.studentName}</span>
-                <span className="score">{result.score || 0}/{activeQuiz.questions?.length || 0}</span>
-                <span className="percentage">{result.percentage || 0}%</span>
-                <span className="status">
-                  {result.completedAt ? '✅ Completed' : '🎯 In Progress'}
-                </span>
+          <div className="virtual-list-container" ref={listRef}>
+            <div 
+              className="virtual-list-wrapper"
+              style={{ height: totalHeight }}
+            >
+              <div 
+                className="virtual-list-content"
+                style={{ transform: `translateY(${offsetY}px)` }}
+              >
+                {visibleParticipants.map((result, index) => {
+                  const globalIndex = visibleRange[0] + index;
+                  return (
+                    <div 
+                      key={result.id} 
+                      className={`table-row ${globalIndex < 3 ? 'top-three' : ''}`}
+                      style={{ height: itemHeight }}
+                    >
+                      <span className="rank">
+                        {globalIndex === 0 ? '🥇' : 
+                         globalIndex === 1 ? '🥈' : 
+                         globalIndex === 2 ? '🥉' : `#${globalIndex + 1}`}
+                      </span>
+                      <span className="student">{result.studentName}</span>
+                      <span className="score">{result.score || 0}/{activeQuiz.questions?.length || 0}</span>
+                      <span className="percentage">{result.percentage || 0}%</span>
+                      <span className="status">
+                        {result.completedAt ? '✅ Completed' : '🎯 In Progress'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Index Status Info */}
-      <div className="index-info">
-        <p>
-          <strong>ℹ️ Index Status:</strong> Building composite index for faster queries. 
-          This may take a few minutes. Live updates are currently polling every 3 seconds.
-        </p>
-        <p>
-          <small>
-            You can check index status: 
-            <a 
-              href="https://console.firebase.google.com/v1/r/project/first-a7079/firestore/indexes" 
-              target="_blank" 
-              rel="noopener noreferrer"
-            >
-              Firebase Console → Firestore → Indexes
-            </a>
-          </small>
-        </p>
+      <div className="ranking-notice">
+        <p>🏆 <strong>Top 5 performers will be automatically saved when quiz ends</strong></p>
       </div>
     </div>
   );

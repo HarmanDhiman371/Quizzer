@@ -1,16 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { listenToActiveQuiz } from '../utils/firestore';
 
+// Create context first
 const QuizContext = createContext();
 
-export const useQuiz = () => {
-  const context = useContext(QuizContext);
-  if (!context) {
-    throw new Error('useQuiz must be used within a QuizProvider');
-  }
-  return context;
-};
+// Export the context
+export { QuizContext };
 
+// Then create the provider
 export const QuizProvider = ({ children }) => {
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,4 +42,13 @@ export const QuizProvider = ({ children }) => {
       {children}
     </QuizContext.Provider>
   );
+};
+
+// Then create the hook
+export const useQuiz = () => {
+  const context = useContext(QuizContext);
+  if (!context) {
+    throw new Error('useQuiz must be used within a QuizProvider');
+  }
+  return context;
 };
