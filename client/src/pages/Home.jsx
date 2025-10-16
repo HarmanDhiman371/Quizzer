@@ -15,13 +15,16 @@ const HomePage = () => {
     navigate('/student');
   };
 
-  const handleAdminLogin = () => {
-    if (adminPassword === 'admin123') {
-      navigate('/admin');
-    } else {
-      alert('Invalid admin password!');
-    }
-  };
+  // In your HomePage component, update the handleAdminLogin function:
+const handleAdminLogin = () => {
+  if (adminPassword === 'admin123') {
+    // Store authentication in localStorage
+    localStorage.setItem('adminAuthenticated', 'true');
+    navigate('/admin');
+  } else {
+    alert('Invalid admin password!');
+  }
+};
 
   return (
     <div className="homepage">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import QuizCreator from './QuizCreator';
 import QuizManager from './QuizManager';
 import LiveMonitor from './LiveMonitor';
@@ -7,8 +8,10 @@ import { useQuiz } from '../../contexts/QuizContext';
 import "./admin.css"
 
 const AdminPanel = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('create');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { activeQuiz } = useQuiz();
 
   // Auto-switch to live monitor when quiz becomes active
@@ -17,6 +20,11 @@ const AdminPanel = () => {
       setActiveTab('live');
     }
   }, [activeQuiz]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminAuthenticated');
+    navigate('/');
+  };
 
   const tabs = [
     { id: 'create', label: 'Create Quiz', icon: '📝', color: '#007bff' },
@@ -32,6 +40,33 @@ const AdminPanel = () => {
 
   return (
     <div className="admin-panel">
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="logout-modal-overlay">
+          <div className="logout-modal">
+            <div className="modal-header">
+              <h3>Confirm Logout</h3>
+              <div className="modal-icon">🚪</div>
+            </div>
+            <p>Are you sure you want to logout from admin panel?</p>
+            <div className="modal-actions">
+              <button 
+                className="btn btn-cancel"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-logout-confirm"
+                onClick={handleLogout}
+              >
+                Yes, Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Header */}
       <div className="mobile-header">
         <button 
@@ -109,6 +144,15 @@ const AdminPanel = () => {
               </div>
             )}
           </div>
+
+          {/* Logout Button in Sidebar */}
+          <button 
+            className="logout-btn"
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <span className="logout-icon">🚪</span>
+            <span className="logout-text">Logout</span>
+          </button>
         </div>
       </div>
 
@@ -127,24 +171,36 @@ const AdminPanel = () => {
             </p>
           </div>
           
-          {activeTab === 'live' && activeQuiz && (
-            <div className="live-quick-stats">
-              <div className="quick-stat">
-                <span className="stat-value">{activeQuiz.questions?.length || 0}</span>
-                <span className="stat-label">Questions</span>
+          <div className="header-right">
+            {/* Desktop Logout Button */}
+            <button 
+              className="desktop-logout-btn"
+              onClick={() => setShowLogoutConfirm(true)}
+              title="Logout"
+            >
+              <span className="logout-icon">🚪</span>
+              <span className="logout-text">Logout</span>
+            </button>
+            
+            {activeTab === 'live' && activeQuiz && (
+              <div className="live-quick-stats">
+                <div className="quick-stat">
+                  <span className="stat-value">{activeQuiz.questions?.length || 0}</span>
+                  <span className="stat-label">Questions</span>
+                </div>
+                <div className="quick-stat">
+                  <span className="stat-value">{activeQuiz.timePerQuestion}s</span>
+                  <span className="stat-label">Per Q</span>
+                </div>
+                <div className="quick-stat">
+                  <span className="stat-value">
+                    {activeQuiz.status === 'waiting' ? 'Waiting' : 'Active'}
+                  </span>
+                  <span className="stat-label">Status</span>
+                </div>
               </div>
-              <div className="quick-stat">
-                <span className="stat-value">{activeQuiz.timePerQuestion}s</span>
-                <span className="stat-label">Per Q</span>
-              </div>
-              <div className="quick-stat">
-                <span className="stat-value">
-                  {activeQuiz.status === 'waiting' ? 'Waiting' : 'Active'}
-                </span>
-                <span className="stat-label">Status</span>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="content-area">

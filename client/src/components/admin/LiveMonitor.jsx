@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
 import { endActiveQuiz, listenToQuizResults, pauseQuiz, resumeQuiz, deleteClassResult } from '../../utils/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 
 const LiveMonitor = () => {
   const { activeQuiz } = useQuiz();
@@ -9,6 +11,30 @@ const LiveMonitor = () => {
   const [lastUpdate, setLastUpdate] = useState(Date.now());
   const [visibleRange, setVisibleRange] = useState([0, 20]);
   const listRef = useRef();
+
+  // NEW: Function to manually start the quiz
+  const handleStartQuiz = async () => {
+    try {
+      console.log('🎬 Admin manually starting quiz...');
+      setLoading(true);
+      
+      // Update quiz status from 'waiting' to 'active'
+      const activeQuizRef = doc(db, 'activeQuiz', 'current');
+      await updateDoc(activeQuizRef, {
+        status: 'active',
+        quizStartTime: Date.now(), // Start now
+        lastUpdated: serverTimestamp()
+      });
+      
+      console.log('✅ Quiz started manually by admin');
+      alert('🚀 Quiz started! Students will begin now.');
+    } catch (error) {
+      console.error('Error starting quiz:', error);
+      alert('Error starting quiz: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Real-time listener for results - ONLY for current active quiz
   useEffect(() => {
@@ -110,6 +136,221 @@ const LiveMonitor = () => {
             <p>No active quiz running. Start a quiz to see live monitoring.</p>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // NEW: Show start quiz section when quiz is in waiting status
+  if (activeQuiz.status === 'waiting') {
+    return (
+      <div className="live-monitor">
+        <div className="waiting-quiz-section">
+          <div className="waiting-header">
+            <div className="waiting-icon">⏳</div>
+            <h3>Quiz Ready to Start</h3>
+            <p className="quiz-info">
+              <strong>{activeQuiz.name}</strong> • Class: {activeQuiz.class} • {activeQuiz.questions?.length || 0} Questions
+            </p>
+          </div>
+
+          <div className="waiting-stats">
+            <div className="stat-card">
+              <div className="stat-value">{results.length}</div>
+              <div className="stat-label">Students in Waiting Room</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{activeQuiz.questions?.length || 0}</div>
+              <div className="stat-label">Total Questions</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{activeQuiz.timePerQuestion}s</div>
+              <div className="stat-label">Time per Question</div>
+            </div>
+          </div>
+
+          <div className="start-quiz-section">
+            <h4>🚀 Start Quiz Now</h4>
+            <p>All set! Click the button below to start the quiz for all students in the waiting room.</p>
+            <button 
+              onClick={handleStartQuiz}
+              disabled={loading}
+              className="btn-start-quiz"
+            >
+              {loading ? 'Starting...' : '🎬 Start Quiz Now'}
+            </button>
+          </div>
+
+          {results.length > 0 && (
+            <div className="waiting-participants">
+              <h5>👥 Students in Waiting Room ({results.length})</h5>
+              <div className="participants-grid">
+                {results.map((result, index) => (
+                  <div key={result.id} className="participant-badge">
+                    <span className="participant-avatar">👤</span>
+                    <span className="participant-name">{result.studentName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <style jsx>{`
+          .waiting-quiz-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+          }
+
+          .waiting-header {
+            margin-bottom: 30px;
+          }
+
+          .waiting-icon {
+            font-size: 4rem;
+            margin-bottom: 15px;
+          }
+
+          .waiting-header h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+          }
+
+          .quiz-info {
+            color: #6c757d;
+            font-size: 1rem;
+            margin: 0;
+          }
+
+          .waiting-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+          }
+
+          .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+          }
+
+          .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+
+          .stat-label {
+            font-size: 0.8rem;
+            opacity: 0.9;
+          }
+
+          .start-quiz-section {
+            background: rgba(40, 167, 69, 0.1);
+            border: 2px solid #28a745;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+          }
+
+          .start-quiz-section h4 {
+            color: #28a745;
+            margin-bottom: 10px;
+            font-size: 1.4rem;
+          }
+
+          .start-quiz-section p {
+            color: #155724;
+            margin-bottom: 20px;
+            font-size: 1rem;
+          }
+
+          .btn-start-quiz {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+          }
+
+          .btn-start-quiz:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+          }
+
+          .btn-start-quiz:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+          }
+
+          .waiting-participants {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+          }
+
+          .waiting-participants h5 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+          }
+
+          .participants-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+          }
+
+          .participant-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+          }
+
+          .participant-avatar {
+            font-size: 1rem;
+          }
+
+          .participant-name {
+            color: #495057;
+            font-weight: 500;
+            font-size: 0.9rem;
+          }
+
+          @media (max-width: 768px) {
+            .waiting-stats {
+              grid-template-columns: repeat(2, 1fr);
+            }
+
+            .btn-start-quiz {
+              padding: 12px 30px;
+              font-size: 1.1rem;
+            }
+
+            .participants-grid {
+              justify-content: flex-start;
+            }
+          }
+        `}</style>
       </div>
     );
   }

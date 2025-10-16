@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   getQuizzesFromFirestore, 
   deleteQuizFromFirestore, 
-  setActiveQuiz
+  setActiveQuiz,
+  activateScheduledQuiz
 } from '../../utils/firestore';
-import Modal from '../alert/Modal'; // Import the Modal component
+import Modal from '../alert/Modal';
 
 const QuizManager = () => {
   const [quizzes, setQuizzes] = useState([]);
@@ -80,8 +81,13 @@ const QuizManager = () => {
       setStartingQuiz(quiz.id);
       setCountdown(10);
 
-      // Set quiz to waiting room with 10-second countdown
-      await setActiveQuiz(quiz);
+      // For scheduled quizzes, use activate function
+      if (quiz.status === 'scheduled') {
+        await activateScheduledQuiz(quiz.id);
+      } else {
+        // For draft quizzes, use regular start
+        await setActiveQuiz(quiz);
+      }
       
       // Start the 10-second countdown
       const countdownInterval = setInterval(() => {
@@ -123,6 +129,12 @@ const QuizManager = () => {
     );
   };
 
+  // Check if quiz is ready to start (scheduled time passed)
+  const isQuizReadyToStart = (quiz) => {
+    if (!quiz.scheduledTime) return true;
+    return Date.now() >= quiz.scheduledTime;
+  };
+
   if (loading) {
     return (
       <div className="quiz-manager">
@@ -157,50 +169,63 @@ const QuizManager = () => {
             <p>Create a new quiz in the Create Quiz tab.</p>
           </div>
         ) : (
-          quizzes.map((quiz) => (
-            <div key={quiz.id} className="quiz-card">
-              <div className="quiz-info">
-                <div className="quiz-header">
-                  <h4>{quiz.name}</h4>
-                  <span className="status-badge status-scheduled">SCHEDULED</span>
-                  {startingQuiz === quiz.id && countdown > 0 && (
-                    <span className="starting-badge">Starting... {countdown}s</span>
+          quizzes.map((quiz) => {
+            const readyToStart = isQuizReadyToStart(quiz);
+            
+            return (
+              <div key={quiz.id} className="quiz-card">
+                <div className="quiz-info">
+                  <div className="quiz-header">
+                    <h4>{quiz.name}</h4>
+                    <div className="status-badges">
+                      <span className="status-badge status-scheduled">SCHEDULED</span>
+                      {!readyToStart && (
+                        <span className="status-badge status-waiting">WAITING FOR TIME</span>
+                      )}
+                      {startingQuiz === quiz.id && countdown > 0 && (
+                        <span className="starting-badge">Starting... {countdown}s</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="quiz-class">Class: {quiz.class}</p>
+                  <div className="quiz-details">
+                    <span>{quiz.questions?.length || 0} questions</span>
+                    <span>{quiz.timePerQuestion}s per question</span>
+                    <span>Total: {Math.ceil((quiz.questions?.length || 0) * quiz.timePerQuestion / 60)}min</span>
+                  </div>
+                  {quiz.scheduledTime && (
+                    <p className="scheduled-time">
+                      🕒 Scheduled for: {new Date(quiz.scheduledTime).toLocaleString()}
+                      {!readyToStart && (
+                        <span className="time-warning"> (Not yet ready to start)</span>
+                      )}
+                    </p>
                   )}
-                </div>
-                <p className="quiz-class">Class: {quiz.class}</p>
-                <div className="quiz-details">
-                  <span>{quiz.questions?.length || 0} questions</span>
-                  <span>{quiz.timePerQuestion}s per question</span>
-                  <span>Total: {Math.ceil((quiz.questions?.length || 0) * quiz.timePerQuestion / 60)}min</span>
-                </div>
-                {quiz.scheduledTime && (
-                  <p className="scheduled-time">
-                    🕒 Scheduled for: {new Date(quiz.scheduledTime).toLocaleString()}
+                  <p className="created-time">
+                    Created: {quiz.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
                   </p>
-                )}
-                <p className="created-time">
-                  Created: {quiz.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
-                </p>
-              </div>
-              
-              <div className="quiz-actions">
-                <button
-                  onClick={() => handleStartQuiz(quiz)}
-                  disabled={startingQuiz === quiz.id}
-                  className="btn btn-success btn-sm"
-                >
-                  {startingQuiz === quiz.id ? '🕐 Starting...' : '🚀 Start Quiz'}
-                </button>
+                </div>
                 
-                <button
-                  onClick={() => handleDeleteQuiz(quiz.id, quiz.name)}
-                  className="btn btn-danger btn-sm"
-                >
-                  🗑️ Delete
-                </button>
+                <div className="quiz-actions">
+                  <button
+                    onClick={() => handleStartQuiz(quiz)}
+                    disabled={startingQuiz === quiz.id || !readyToStart}
+                    className="btn btn-success btn-sm"
+                    title={!readyToStart ? 'Wait for scheduled time to start' : 'Start quiz now'}
+                  >
+                    {startingQuiz === quiz.id ? '🕐 Starting...' : '🚀 Start Quiz'}
+                  </button>
+                  
+                  <button
+                    onClick={() => handleDeleteQuiz(quiz.id, quiz.name)}
+                    className="btn btn-danger btn-sm"
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

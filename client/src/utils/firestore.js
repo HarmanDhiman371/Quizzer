@@ -46,7 +46,143 @@ export const saveQuizToFirestore = async (quiz) => {
     throw error;
   }
 };
+export const getScheduledQuizById = async (quizId) => {
+  try {
+    const quizDoc = await getDoc(doc(db, QUIZZES_COLLECTION, quizId));
+    if (quizDoc.exists()) {
+      return { id: quizDoc.id, ...quizDoc.data() };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting scheduled quiz:', error);
+    return null;
+  }
+};
+export const activateScheduledQuiz = async (quizId) => {
+  try {
+    const quiz = await getScheduledQuizById(quizId);
+    if (!quiz) {
+      throw new Error('Quiz not found');
+    }
 
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    
+    const activeQuizData = {
+      ...quiz,
+      originalQuizId: quiz.id,
+      quizStartTime: null, // ← CHANGE THIS: Remove auto-start timer
+      currentQuestionIndex: 0,
+      totalParticipants: 0,
+      waitingParticipants: [],
+      status: 'waiting',
+      lastUpdated: serverTimestamp(),
+      isFromScheduled: true
+    };
+
+    console.log('🚀 Moving scheduled quiz to waiting room:', quiz.name);
+    
+    await setDoc(activeQuizRef, activeQuizData);
+    
+    // Update the scheduled quiz status
+    await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
+      status: 'activated',
+      activatedAt: serverTimestamp()
+    });
+    
+    console.log('✅ Scheduled quiz moved to waiting room (waiting for admin to start):', quiz.name);
+    return activeQuizData;
+  } catch (error) {
+    console.error('Error activating scheduled quiz:', error);
+    throw error;
+  }
+};
+export const isStudentInWaitingRoom = async (studentName) => {
+  try {
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    if (activeQuizDoc.exists()) {
+      const activeQuiz = activeQuizDoc.data();
+      const waitingParticipants = activeQuiz.waitingParticipants || [];
+      return waitingParticipants.includes(studentName);
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking waiting room status:', error);
+    return false;
+  }
+};
+
+// Join waiting room for scheduled quiz
+export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
+  try {
+    console.log('🚀 Joining scheduled quiz:', quizId, studentName);
+    
+    // Get the scheduled quiz
+    const quiz = await getScheduledQuizById(quizId);
+    if (!quiz) {
+      throw new Error('Quiz not found');
+    }
+
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    let activeQuiz;
+    
+    if (!activeQuizDoc.exists() || activeQuizDoc.data().status === 'inactive') {
+      console.log('🆕 Creating new waiting room from scheduled quiz');
+      
+      // FIX: Ensure quiz has valid questions before activating
+      if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+        throw new Error('Quiz has no valid questions');
+      }
+      
+      activeQuiz = {
+        ...quiz,
+        originalQuizId: quiz.id,
+        quizStartTime: null, // No auto-start timer
+        currentQuestionIndex: 0,
+        totalParticipants: 1, // Start with 1 for this student
+        waitingParticipants: [studentName],
+        status: 'waiting',
+        lastUpdated: serverTimestamp(),
+        isFromScheduled: true
+      };
+
+      await setDoc(activeQuizRef, activeQuiz);
+      
+      // Update scheduled quiz status
+      await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
+        status: 'activated',
+        activatedAt: serverTimestamp()
+      });
+      
+    } else {
+      // Add student to existing waiting room
+      console.log('➕ Adding student to existing waiting room');
+      const currentData = activeQuizDoc.data();
+      const currentParticipants = currentData.waitingParticipants || [];
+      
+      if (!currentParticipants.includes(studentName)) {
+        const updatedParticipants = [...currentParticipants, studentName];
+        await updateDoc(activeQuizRef, {
+          waitingParticipants: updatedParticipants,
+          totalParticipants: (currentData.totalParticipants || 0) + 1,
+          lastUpdated: serverTimestamp()
+        });
+      }
+      
+      activeQuiz = { id: activeQuizDoc.id, ...currentData };
+    }
+
+    console.log('✅ Successfully joined waiting room');
+    return { success: true, quiz: activeQuiz };
+    
+  } catch (error) {
+    console.error('❌ Error joining scheduled quiz waiting room:', error);
+    throw error;
+  }
+};
 // Delete quiz from Firestore
 export const deleteQuizFromFirestore = async (quizId) => {
   try {
@@ -66,13 +202,14 @@ export const setActiveQuiz = async (quiz) => {
     
     const activeQuizData = {
       ...quiz,
-      originalQuizId: quiz.id, // Preserve the original quiz ID
-      quizStartTime: Date.now() + 10000, // Start in 10 seconds
+      originalQuizId: quiz.id,
+      quizStartTime: null, // ← CHANGE THIS: Remove auto-start timer
       currentQuestionIndex: 0,
       totalParticipants: 0,
-      waitingParticipants: [],
-      status: 'waiting', // Start in waiting room
-      lastUpdated: serverTimestamp()
+      waitingParticipants: quiz.waitingParticipants || [],
+      status: 'waiting',
+      lastUpdated: serverTimestamp(),
+      isFromScheduled: quiz.isFromScheduled || false
     };
 
     console.log('🚀 Setting active quiz to waiting room:', quiz.name);
@@ -85,7 +222,6 @@ export const setActiveQuiz = async (quiz) => {
     throw error;
   }
 };
-
 // Get active quiz
 export const getActiveQuizFromFirestore = async () => {
   try {
@@ -109,8 +245,11 @@ export const listenToActiveQuiz = (callback) => {
   
   return onSnapshot(activeQuizRef, (docSnap) => {
     if (docSnap.exists()) {
-      callback({ id: docSnap.id, ...docSnap.data() });
+      const quizData = { id: docSnap.id, ...docSnap.data() };
+      console.log('🎯 REAL-TIME UPDATE - Quiz Status:', quizData.status, 'Start Time:', quizData.quizStartTime);
+      callback(quizData);
     } else {
+      console.log('🎯 REAL-TIME UPDATE - No active quiz');
       callback(null);
     }
   });
@@ -410,6 +549,8 @@ export const incrementParticipantCount = async () => {
 
 // Get quiz results
 // Get quiz results - ensure proper query
+
+
 export const getQuizResultsFromFirestore = async (quizId) => {
   try {
     const q = query(
@@ -516,27 +657,64 @@ export const getAllClassResults = async () => {
     throw error;
   }
 };
-
-// Get scheduled quizzes for students
-export const getScheduledQuizzes = async () => {
+export const getAllScheduledQuizzes = async () => {
   try {
-    const now = Date.now();
     const q = query(
       collection(db, QUIZZES_COLLECTION),
-      where('status', '==', 'scheduled'),
-      where('scheduledTime', '>', now),
+      where('status', 'in', ['scheduled', 'activated']), // Include activated but not started
       orderBy('scheduledTime', 'asc')
     );
     
     const querySnapshot = await getDocs(q);
     const quizzes = [];
+    
     querySnapshot.forEach((doc) => {
-      quizzes.push({ id: doc.id, ...doc.data() });
+      quizzes.push({ 
+        id: doc.id, 
+        ...doc.data()
+      });
     });
+    
+    console.log(`📅 Found ${quizzes.length} scheduled/activated quizzes`);
+    return quizzes;
+  } catch (error) {
+    console.error('Error getting all scheduled quizzes:', error);
+    return [];
+  }
+};
+// Get scheduled quizzes for students
+// Enhanced getScheduledQuizzes with better error handling
+export const getScheduledQuizzes = async () => {
+  try {
+    const now = Date.now();
+    
+    // FIX: Use simpler query to avoid Firestore errors
+    const q = query(
+      collection(db, QUIZZES_COLLECTION),
+      where('status', '==', 'scheduled'),
+      orderBy('scheduledTime', 'asc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const quizzes = [];
+    
+    querySnapshot.forEach((doc) => {
+      const quizData = doc.data();
+      // FIX: Filter by time on client side to avoid complex queries
+      if (quizData.scheduledTime && quizData.scheduledTime > now) {
+        quizzes.push({ 
+          id: doc.id, 
+          ...quizData
+        });
+      }
+    });
+    
+    console.log(`📅 Found ${quizzes.length} scheduled quizzes`);
     return quizzes;
   } catch (error) {
     console.error('Error getting scheduled quizzes:', error);
-    throw error;
+    // Return empty array to prevent UI crashes
+    return [];
   }
 };
 
