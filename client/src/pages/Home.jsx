@@ -394,7 +394,7 @@ const HomePage = () => {
         }
 
         .password-input {
-          width: 100%;
+          width: 80%;
           padding: 18px 20px;
           border: 2px solid #e9ecef;
           border-radius: 12px;

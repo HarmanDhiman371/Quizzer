@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useQuizSync } from '../../hooks/useQuizSync';
 import { saveOrUpdateQuizResult } from '../../utils/firestore';
 import Timer from '../shared/Timer';
+import './quiz.css';
 
 const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   const [answers, setAnswers] = useState([]);
@@ -9,6 +10,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   const [joinTime, setJoinTime] = useState(Date.now());
   const [hasSavedFinal, setHasSavedFinal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(false);
   
   // Validate quiz data on component mount
   const validateQuizData = (quiz) => {
@@ -65,35 +67,79 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     calculateMissedQuestions
   } = useQuizSync(activeQuiz);
 
-  // Fullscreen effect
+  // Enter fullscreen function - must be called from user gesture
+  const enterFullscreen = () => {
+    const element = document.documentElement;
+    
+    if (element.requestFullscreen) {
+      element.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+        setQuizStarted(true);
+      }).catch(err => {
+        console.log('Fullscreen error:', err);
+        // If fullscreen fails, still start the quiz
+        setQuizStarted(true);
+      });
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen();
+      setIsFullscreen(true);
+      setQuizStarted(true);
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen();
+      setIsFullscreen(true);
+      setQuizStarted(true);
+    } else {
+      // Fullscreen not supported, still start the quiz
+      console.log('Fullscreen not supported');
+      setQuizStarted(true);
+    }
+  };
+
+  // Exit fullscreen function
+  const exitFullscreen = () => {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  };
+
+  // Handle fullscreen changes
   useEffect(() => {
-    const enterFullscreen = () => {
-      const element = document.documentElement;
-      if (element.requestFullscreen) {
-        element.requestFullscreen().catch(err => {
-          console.log('Fullscreen error:', err);
-        });
-      } else if (element.webkitRequestFullscreen) {
-        element.webkitRequestFullscreen();
-      } else if (element.msRequestFullscreen) {
-        element.msRequestFullscreen();
+    const handleFullscreenChange = () => {
+      const fullscreenElement = document.fullscreenElement || 
+                               document.webkitFullscreenElement || 
+                               document.msFullscreenElement;
+      setIsFullscreen(!!fullscreenElement);
+      
+      // If user exits fullscreen manually, keep quiz running
+      if (!fullscreenElement && quizStarted) {
+        // Quiz continues but without fullscreen
+        console.log('User exited fullscreen manually');
       }
     };
 
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    // Enter fullscreen when quiz starts
-    if (quizStatus === 'active' && !isFullscreen) {
-      enterFullscreen();
-    }
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
     
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
     };
+  }, [quizStarted]);
+
+  // Auto-exit fullscreen when quiz ends
+  useEffect(() => {
+    if (quizStatus === 'ended' && isFullscreen) {
+      // Small delay to show completion message before exiting fullscreen
+      setTimeout(() => {
+        exitFullscreen();
+      }, 2000);
+    }
   }, [quizStatus, isFullscreen]);
 
   // Copy protection effect
@@ -120,6 +166,11 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
         e.preventDefault();
         return false;
       }
+      // Prevent F11 for fullscreen
+      if (e.key === 'F11') {
+        e.preventDefault();
+        return false;
+      }
     };
 
     document.addEventListener('contextmenu', handleContextMenu);
@@ -141,7 +192,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
       const isValid = validateQuizData(activeQuiz);
       if (!isValid) {
         console.error('🚨 Invalid quiz data, cannot proceed');
-        // You might want to show an error message to the user here
       }
     }
   }, [activeQuiz]);
@@ -161,21 +211,10 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
         const studentAnswer = currentAnswers[index] || '';
         const correctAnswer = question.correctAnswer;
         
-        // Debug logging
-        console.log(`Q${index + 1}: Student: "${studentAnswer}", Correct: "${correctAnswer}", Match: ${studentAnswer === correctAnswer}`);
-        
         if (studentAnswer === correctAnswer) {
           score++;
         }
       }
-    });
-    
-    console.log('🎯 Final Score Calculation:', {
-      totalQuestions: activeQuiz.questions.length,
-      missedCount: missedCount,
-      answeredCount: activeQuiz.questions.length - missedCount,
-      correctAnswers: score,
-      finalScore: score
     });
     
     return score;
@@ -186,12 +225,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     if (activeQuiz && activeQuiz.questions && activeQuiz.questions.length > 0 && answers.length === 0) {
       const initialAnswers = new Array(activeQuiz.questions.length).fill('');
       const missedCount = calculateMissedQuestions(joinTime);
-      
-      console.log('📝 Initializing answers:', {
-        totalQuestions: activeQuiz.questions.length,
-        initialAnswersLength: initialAnswers.length,
-        missedCount: missedCount
-      });
       
       setAnswers(initialAnswers);
     }
@@ -205,7 +238,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
 
   // Handle answer selection
   const handleAnswerSelect = async (answer) => {
-    if (quizStatus !== 'active') return;
+    if (quizStatus !== 'active' || !quizStarted) return;
     
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = answer;
@@ -235,7 +268,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
 
   // Handle quiz completion
   useEffect(() => {
-    if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz) {
+    if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted) {
       const finalScore = calculateScore(answers);
       
       saveOrUpdateQuizResult({
@@ -265,7 +298,8 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     studentName, 
     joinTime, 
     onQuizComplete,
-    calculateScore
+    calculateScore,
+    quizStarted
   ]);
 
   // Check if current question was missed
@@ -293,12 +327,76 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     );
   }
 
+  // Show start screen if quiz hasn't started
+  if (!quizStarted) {
+    return (
+      <div className="quiz-interface">
+        <div className="quiz-start-screen">
+          <div className="start-container">
+            <div className="start-icon">🚀</div>
+            <h1>Ready to Start?</h1>
+            <p>You are about to begin: <strong>{activeQuiz.name}</strong></p>
+            
+            <div className="quiz-info-card">
+              <h3>Quiz Details</h3>
+              <div className="info-grid">
+                <div className="info-item">
+                  <span className="label">Class</span>
+                  <span className="value">{activeQuiz.class}</span>
+                </div>
+                <div className="info-item">
+                  <span className="label">Questions</span>
+                  <span className="value">{activeQuiz.questions.length}</span>
+                </div>
+                <div className="info-item">
+                  <span className="label">Time per Q</span>
+                  <span className="value">{activeQuiz.timePerQuestion}s</span>
+                </div>
+                <div className="info-item">
+                  <span className="label">Total Time</span>
+                  <span className="value">
+                    {Math.ceil((activeQuiz.questions.length * activeQuiz.timePerQuestion) / 60)} min
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="instructions">
+              <h4>📋 Important Instructions</h4>
+              <ul>
+                <li>✅ The quiz will open in fullscreen mode</li>
+                <li>⏱️ Each question has {activeQuiz.timePerQuestion} seconds</li>
+                <li>📱 Do not refresh or leave the page</li>
+                <li>🚫 Switching tabs may end your quiz</li>
+                <li>🎯 Answer carefully - you can't go back!</li>
+                <li>💡 Select your answer and it will be saved automatically</li>
+              </ul>
+            </div>
+
+            <button 
+              className="start-quiz-btn"
+              onClick={enterFullscreen}
+            >
+              🚀 Start Quiz Now
+            </button>
+
+            <p className="start-note">
+              Click the button above to begin your assessment in fullscreen mode
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (currentQuestionIndex >= activeQuiz.questions.length) {
     return (
       <div className="quiz-interface">
         <div className="quiz-complete">
-          <h3>✅ Quiz Complete</h3>
-          <p>Calculating your results...</p>
+          <div className="complete-icon">✅</div>
+          <h3>Quiz Complete!</h3>
+          <p>Your results are being calculated...</p>
+          <p className="complete-note">You will be redirected to results shortly</p>
         </div>
       </div>
     );
@@ -323,7 +421,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
       {/* Fullscreen Warning */}
       {isFullscreen && (
         <div className="fullscreen-warning">
-          ⚠️ Do not switch tabs or windows during the assessment!
+          ⚠️ Assessment in Progress - Do not switch tabs or windows!
         </div>
       )}
 
@@ -428,754 +526,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
 
       {/* Copy Protection Overlay */}
       <div className="copy-protection-overlay"></div>
-
-      <style jsx>{`
-        /* Quiz Interface CSS - Mobile Optimized with Fullscreen Support */
-        .quiz-interface {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          font-family: 'Inter', 'Segoe UI', sans-serif;
-          position: relative;
-          overflow-x: hidden;
-        }
-
-        /* Fullscreen Mode */
-        .quiz-interface.fullscreen-active {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          width: 100vw;
-          height: 100vh;
-          z-index: 10000;
-          overflow: hidden;
-        }
-
-        /* Header Section */
-        .quiz-interface .quiz-header {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(20px);
-          padding: 20px 25px;
-          border-radius: 0 0 20px 20px;
-          box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 15px;
-          position: relative;
-          z-index: 100;
-        }
-
-        .quiz-interface .header-left {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          flex-wrap: wrap;
-        }
-
-        .quiz-interface .header-left h2 {
-          color: #2c3e50;
-          margin: 0;
-          font-size: 1.4rem;
-          font-weight: 700;
-          line-height: 1.3;
-        }
-
-        .quiz-interface .class-badge {
-          background: linear-gradient(135deg, #007bff, #0056b3);
-          color: white;
-          padding: 6px 12px;
-          border-radius: 15px;
-          font-size: 0.8rem;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .quiz-interface .quiz-meta {
-          display: flex;
-          align-items: center;
-          gap: 20px;
-          flex-wrap: wrap;
-        }
-
-        .quiz-interface .question-counter {
-          background: #f8f9fa;
-          color: #495057;
-          padding: 8px 16px;
-          border-radius: 20px;
-          font-weight: 600;
-          font-size: 0.9rem;
-          border: 2px solid #e9ecef;
-        }
-
-        /* Timer Component */
-        .quiz-interface .timer {
-          background: linear-gradient(135deg, #28a745, #20c997);
-          color: white;
-          padding: 10px 20px;
-          border-radius: 25px;
-          font-weight: 700;
-          font-size: 1rem;
-          box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
-          animation: timer-pulse 1s ease-in-out infinite;
-        }
-
-        .quiz-interface .timer.warning {
-          background: linear-gradient(135deg, #dc3545, #c82333);
-          animation: timer-pulse-urgent 0.5s ease-in-out infinite;
-        }
-
-        @keyframes timer-pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-
-        @keyframes timer-pulse-urgent {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-        }
-
-        /* Progress Section */
-        .quiz-interface .progress-section {
-          padding: 20px 25px 15px;
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(10px);
-        }
-
-        .quiz-interface .progress-bar {
-          width: 100%;
-          height: 8px;
-          background: rgba(255, 255, 255, 0.3);
-          border-radius: 4px;
-          overflow: hidden;
-          margin-bottom: 10px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .quiz-interface .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #ffd700, #ffed4e);
-          border-radius: 4px;
-          transition: width 0.5s ease;
-          box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
-        }
-
-        .quiz-interface .progress-text {
-          text-align: center;
-          color: white;
-          font-size: 0.9rem;
-          font-weight: 600;
-          opacity: 0.9;
-        }
-
-        /* Question Area */
-        .quiz-interface .question-area {
-          flex: 1;
-          padding: 25px;
-          max-width: 800px;
-          margin: 0 auto;
-          width: 100%;
-        }
-
-        /* Missed Question */
-        .quiz-interface .missed-question {
-          background: rgba(255, 255, 255, 0.95);
-          padding: 40px 30px;
-          border-radius: 20px;
-          text-align: center;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-          border: 2px dashed #ffc107;
-          animation: slide-up 0.5s ease-out;
-        }
-
-        .quiz-interface .missed-icon {
-          font-size: 4rem;
-          margin-bottom: 20px;
-          animation: bounce 2s ease-in-out infinite;
-        }
-
-        .quiz-interface .missed-question h3 {
-          color: #856404;
-          margin-bottom: 15px;
-          font-size: 1.5rem;
-        }
-
-        .quiz-interface .missed-question p {
-          color: #856404;
-          margin: 10px 0;
-          font-size: 1.1rem;
-          line-height: 1.5;
-        }
-
-        .quiz-interface .missed-note {
-          font-size: 0.9rem !important;
-          opacity: 0.8;
-          font-style: italic;
-        }
-
-        /* Question Text */
-        .quiz-interface .question-text {
-          background: rgba(255, 255, 255, 0.95);
-          border-radius: 20px;
-          padding: 30px;
-          margin-bottom: 25px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-          backdrop-filter: blur(10px);
-          animation: slide-up 0.5s ease-out;
-        }
-
-        @keyframes slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .quiz-interface .question-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          flex-wrap: wrap;
-          gap: 10px;
-        }
-
-        .quiz-interface .question-number {
-          background: linear-gradient(135deg, #007bff, #0056b3);
-          color: white;
-          padding: 8px 20px;
-          border-radius: 20px;
-          font-weight: 700;
-          font-size: 0.9rem;
-        }
-
-        .quiz-interface .time-info {
-          background: #f8f9fa;
-          color: #495057;
-          padding: 6px 15px;
-          border-radius: 15px;
-          font-weight: 600;
-          font-size: 0.85rem;
-          border: 2px solid #e9ecef;
-        }
-
-        .quiz-interface .question-content {
-          background: #f8f9fa;
-          padding: 25px;
-          border-radius: 15px;
-          border-left: 4px solid #007bff;
-        }
-
-        .quiz-interface .question-content p {
-          margin: 0;
-          font-size: 1.2rem;
-          line-height: 1.6;
-          color: #2c3e50;
-          font-weight: 500;
-          text-align: center;
-        }
-
-        /* Options Grid */
-        .quiz-interface .options-grid {
-          display: grid;
-          gap: 15px;
-          margin-bottom: 20px;
-        }
-
-        .quiz-interface .option-btn {
-          display: flex;
-          align-items: center;
-          padding: 20px 25px;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          border-radius: 15px;
-          background: rgba(255, 255, 255, 0.95);
-          cursor: pointer;
-          transition: all 0.3s ease;
-          text-align: left;
-          backdrop-filter: blur(10px);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .quiz-interface .option-btn::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: -100%;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-          transition: left 0.5s ease;
-        }
-
-        .quiz-interface .option-btn:hover::before {
-          left: 100%;
-        }
-
-        .quiz-interface .option-btn:hover:not(:disabled) {
-          border-color: #007bff;
-          transform: translateY(-3px);
-          box-shadow: 0 8px 25px rgba(0, 123, 255, 0.2);
-          background: rgba(255, 255, 255, 1);
-        }
-
-        .quiz-interface .option-btn.selected {
-          border-color: #28a745;
-          background: linear-gradient(135deg, #d4edda, #c3e6cb);
-          transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-        }
-
-        .quiz-interface .option-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.7;
-          transform: none !important;
-        }
-
-        .quiz-interface .option-label {
-          font-weight: 800;
-          margin-right: 20px;
-          color: #007bff;
-          font-size: 1.1rem;
-          min-width: 30px;
-          background: rgba(255, 255, 255, 0.9);
-          padding: 10px;
-          border-radius: 10px;
-          text-align: center;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          transition: all 0.3s ease;
-        }
-
-        .quiz-interface .option-btn.selected .option-label {
-          background: #28a745;
-          color: white;
-          box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
-        }
-
-        .quiz-interface .option-text {
-          flex: 1;
-          font-size: 1rem;
-          color: #2c3e50;
-          font-weight: 500;
-          line-height: 1.4;
-        }
-
-        .quiz-interface .option-check {
-          color: #28a745;
-          font-weight: bold;
-          margin-left: 10px;
-          opacity: 0;
-          transform: scale(0);
-          transition: all 0.3s ease;
-        }
-
-        .quiz-interface .option-btn.selected .option-check {
-          opacity: 1;
-          transform: scale(1);
-        }
-
-        .quiz-interface .option-check svg {
-          width: 20px;
-          height: 20px;
-        }
-
-        /* Answer Confirmation */
-        .quiz-interface .answer-confirmation {
-          background: linear-gradient(135deg, #d4edda, #c3e6cb);
-          color: #155724;
-          padding: 15px 20px;
-          border-radius: 12px;
-          text-align: center;
-          border: 1px solid #c3e6cb;
-          animation: slide-in 0.5s ease-out;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          font-weight: 600;
-        }
-
-        @keyframes slide-in {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .quiz-interface .confirmation-icon {
-          font-size: 1.2rem;
-        }
-
-        /* Student Info Footer */
-        .quiz-interface .student-info {
-          background: rgba(255, 255, 255, 0.95);
-          padding: 20px 25px;
-          border-top: 1px solid rgba(0, 0, 0, 0.1);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 15px;
-          backdrop-filter: blur(20px);
-          position: sticky;
-          bottom: 0;
-          z-index: 100;
-        }
-
-        .quiz-interface .student-details {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          flex-wrap: wrap;
-        }
-
-        .quiz-interface .student-name {
-          font-weight: 600;
-          color: #2c3e50;
-          font-size: 1rem;
-        }
-
-        .quiz-interface .missed-count {
-          background: #f8d7da;
-          color: #721c24;
-          padding: 6px 12px;
-          border-radius: 15px;
-          font-weight: 600;
-          font-size: 0.85rem;
-        }
-
-        .quiz-interface .quiz-status-indicator {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-weight: 600;
-        }
-
-        .quiz-interface .status-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          animation: status-pulse 2s infinite;
-        }
-
-        .quiz-interface .status-dot.active {
-          background: #28a745;
-          box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
-        }
-
-        .quiz-interface .status-dot.inactive {
-          background: #dc3545;
-        }
-
-        @keyframes status-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.2); }
-        }
-
-        /* Fullscreen Warning */
-        .quiz-interface .fullscreen-warning {
-          background: #fff3cd;
-          border: 2px solid #ffc107;
-          color: #856404;
-          padding: 15px 20px;
-          border-radius: 10px;
-          margin: 10px 20px;
-          text-align: center;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 15px;
-          flex-wrap: wrap;
-          font-weight: 600;
-          animation: pulse-warning 2s infinite;
-        }
-
-        @keyframes pulse-warning {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-
-        /* Error States */
-        .quiz-interface .quiz-error {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 60vh;
-          text-align: center;
-          color: white;
-          padding: 40px 20px;
-        }
-
-        .quiz-interface .error-icon {
-          font-size: 4rem;
-          margin-bottom: 20px;
-        }
-
-        .quiz-interface .quiz-error h3 {
-          font-size: 1.8rem;
-          margin-bottom: 15px;
-          font-weight: 700;
-        }
-
-        .quiz-interface .quiz-error p {
-          font-size: 1.1rem;
-          opacity: 0.9;
-          margin-bottom: 10px;
-        }
-
-        .quiz-interface .error-details {
-          background: rgba(255, 255, 255, 0.1);
-          padding: 15px;
-          border-radius: 10px;
-          margin-top: 20px;
-          text-align: left;
-          max-width: 400px;
-        }
-
-        .quiz-interface .error-details ul {
-          margin: 10px 0 0 0;
-          padding-left: 20px;
-        }
-
-        .quiz-interface .error-details li {
-          margin-bottom: 5px;
-        }
-
-        /* Quiz Complete */
-        .quiz-interface .quiz-complete {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 60vh;
-          text-align: center;
-          color: white;
-          padding: 40px 20px;
-        }
-
-        .quiz-interface .quiz-complete h3 {
-          font-size: 2rem;
-          margin-bottom: 15px;
-          font-weight: 700;
-        }
-
-        .quiz-interface .quiz-complete p {
-          font-size: 1.2rem;
-          opacity: 0.9;
-        }
-
-        /* Copy Protection Overlay */
-        .quiz-interface .copy-protection-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 9999;
-          pointer-events: none;
-          background: transparent;
-        }
-
-        /* Mobile Responsive Styles */
-        @media (max-width: 768px) {
-          .quiz-interface .quiz-header {
-            padding: 15px 20px;
-            border-radius: 0 0 15px 15px;
-            flex-direction: column;
-            align-items: stretch;
-            gap: 12px;
-          }
-
-          .quiz-interface .header-left {
-            justify-content: center;
-            text-align: center;
-          }
-
-          .quiz-interface .header-left h2 {
-            font-size: 1.2rem;
-          }
-
-          .quiz-interface .quiz-meta {
-            justify-content: center;
-            gap: 15px;
-          }
-
-          .quiz-interface .question-counter {
-            font-size: 0.8rem;
-            padding: 6px 12px;
-          }
-
-          .quiz-interface .timer {
-            font-size: 0.9rem;
-            padding: 8px 16px;
-          }
-
-          .quiz-interface .progress-section {
-            padding: 15px 20px 10px;
-          }
-
-          .quiz-interface .question-area {
-            padding: 20px;
-          }
-
-          .quiz-interface .question-text {
-            padding: 20px;
-            border-radius: 15px;
-          }
-
-          .quiz-interface .question-header {
-            flex-direction: column;
-            gap: 8px;
-            text-align: center;
-          }
-
-          .quiz-interface .question-content {
-            padding: 20px;
-          }
-
-          .quiz-interface .question-content p {
-            font-size: 1.1rem;
-          }
-
-          .quiz-interface .options-grid {
-            gap: 12px;
-          }
-
-          .quiz-interface .option-btn {
-            padding: 16px 20px;
-            border-radius: 12px;
-          }
-
-          .quiz-interface .option-label {
-            font-size: 1rem;
-            min-width: 25px;
-            padding: 8px;
-            margin-right: 15px;
-          }
-
-          .quiz-interface .option-text {
-            font-size: 0.95rem;
-          }
-
-          .quiz-interface .missed-question {
-            padding: 30px 20px;
-            border-radius: 15px;
-          }
-
-          .quiz-interface .missed-icon {
-            font-size: 3rem;
-          }
-
-          .quiz-interface .student-info {
-            padding: 15px 20px;
-            flex-direction: column;
-            gap: 12px;
-            text-align: center;
-          }
-
-          .quiz-interface .student-details {
-            justify-content: center;
-          }
-
-          .quiz-interface .fullscreen-warning {
-            margin: 8px 15px;
-            padding: 12px 15px;
-            font-size: 0.9rem;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .quiz-interface {
-            min-height: 100vh;
-          }
-
-          .quiz-interface .quiz-header {
-            padding: 12px 15px;
-          }
-
-          .quiz-interface .header-left h2 {
-            font-size: 1.1rem;
-          }
-
-          .quiz-interface .class-badge {
-            font-size: 0.75rem;
-            padding: 4px 10px;
-          }
-
-          .quiz-interface .question-area {
-            padding: 15px;
-          }
-
-          .quiz-interface .question-text {
-            padding: 15px;
-          }
-
-          .quiz-interface .question-content {
-            padding: 15px;
-          }
-
-          .quiz-interface .question-content p {
-            font-size: 1rem;
-          }
-
-          .quiz-interface .option-btn {
-            padding: 14px 16px;
-            border-radius: 10px;
-          }
-
-          .quiz-interface .option-label {
-            font-size: 0.9rem;
-            min-width: 22px;
-            padding: 6px;
-            margin-right: 12px;
-          }
-
-          .quiz-interface .option-text {
-            font-size: 0.9rem;
-          }
-
-          .quiz-interface .missed-question {
-            padding: 25px 15px;
-          }
-
-          .quiz-interface .missed-question h3 {
-            font-size: 1.3rem;
-          }
-
-          .quiz-interface .missed-question p {
-            font-size: 1rem;
-          }
-
-          .quiz-interface .answer-confirmation {
-            padding: 12px 15px;
-            font-size: 0.9rem;
-          }
-
-          .quiz-interface .student-info {
-            padding: 12px 15px;
-          }
-
-          .quiz-interface .student-name {
-            font-size: 0.9rem;
-          }
-
-          .quiz-interface .missed-count {
-            font-size: 0.8rem;
-            padding: 4px 10px;
-          }
-        }
-      `}</style>
     </div>
   );
 };

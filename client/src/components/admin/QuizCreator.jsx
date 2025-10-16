@@ -13,7 +13,7 @@ const QuizCreator = () => {
   const [quizClass, setQuizClass] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [modalConfig, setModalConfig] = useState({
@@ -51,7 +51,7 @@ const QuizCreator = () => {
       const parsedQuiz = parseMCQText(mcqText, timePerQuestion);
       parsedQuiz.name = quizName;
       parsedQuiz.class = quizClass;
-      
+
       if (scheduledTime) {
         parsedQuiz.scheduledTime = new Date(scheduledTime).getTime();
         parsedQuiz.status = 'scheduled';
@@ -88,10 +88,10 @@ const QuizCreator = () => {
       };
 
       console.log('🚀 Starting quiz with data:', quizToStart);
-      
+
       await setActiveQuiz(quizToStart);
       showAlertModal('Quiz Started!', '🚀 Quiz started successfully! Students can now join.', 'success');
-      
+
       // Reset form
       setMcqText('');
       setQuizName('');
@@ -135,7 +135,7 @@ const QuizCreator = () => {
 
       await saveQuizToFirestore(scheduledQuiz);
       showAlertModal('Quiz Scheduled!', `✅ Quiz scheduled for ${new Date(scheduleTime).toLocaleString()}`, 'success');
-      
+
       // Reset form
       setMcqText('');
       setQuizName('');
@@ -189,7 +189,7 @@ const QuizCreator = () => {
             onChange={(e) => setQuizName(e.target.value)}
           />
         </div>
-        
+
         <div className="meta-group">
           <label>Class *</label>
           <select
@@ -206,18 +206,22 @@ const QuizCreator = () => {
             <option value="Other">Other</option>
           </select>
         </div>
-        
+
         <div className="meta-group">
           <label>Time per Question (seconds) *</label>
-          <input
-            type="number"
+          <select
             value={timePerQuestion}
-            onChange={(e) => setTimePerQuestion(parseInt(e.target.value) || 30)}
-            min="10"
-            max="120"
-          />
+            onChange={(e) => setTimePerQuestion(parseInt(e.target.value))}
+          >
+            <option value={30}>30 seconds</option>
+            <option value={45}>45 seconds</option>
+            <option value={60}>60 seconds</option>
+            <option value={90}>90 seconds</option>
+            <option value={120}>120 seconds</option>
+          </select>
         </div>
-        
+
+
         <div className="meta-group">
           <label>Schedule Start Time (optional)</label>
           <input
@@ -275,7 +279,7 @@ Correct: C`}
         >
           ✅ Parse MCQs
         </button>
-        
+
         {quiz && (
           <>
             <button
@@ -285,7 +289,7 @@ Correct: C`}
             >
               {isLoading ? 'Starting...' : '🚀 Start Quiz Now'}
             </button>
-            
+
             {scheduledTime ? (
               <button
                 onClick={handleScheduleQuiz}
@@ -316,8 +320,8 @@ Correct: C`}
                 <strong>Q{index + 1}:</strong> {q.question}
                 <div className="preview-options">
                   {q.options?.map((option, optIndex) => (
-                    <div 
-                      key={optIndex} 
+                    <div
+                      key={optIndex}
                       className={`preview-option ${option === q.correctAnswer ? 'correct' : ''}`}
                     >
                       {String.fromCharCode(65 + optIndex)}) {option}
