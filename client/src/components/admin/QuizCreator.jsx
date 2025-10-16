@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
 import { parseMCQText } from '../../utils/mcqParser';
 import { saveQuizToFirestore, setActiveQuiz } from '../../utils/firestore';
+import Modal from '../alert/Modal'; // Import the Modal component
 
 const QuizCreator = () => {
   const { activeQuiz } = useQuiz();
@@ -12,24 +13,38 @@ const QuizCreator = () => {
   const [quizClass, setQuizClass] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   // Check if there's an active quiz
   const hasActiveQuiz = activeQuiz && activeQuiz.status === 'active';
 
+  // Function to show modal
+  const showAlertModal = (title, message, type = 'info') => {
+    setModalConfig({ title, message, type });
+    setShowModal(true);
+  };
+
   const handleParseMCQ = () => {
     try {
       if (!mcqText.trim()) {
-        alert('Please paste some MCQs');
+        showAlertModal('Input Required', 'Please paste some MCQs', 'warning');
         return;
       }
 
       if (!quizName.trim()) {
-        alert('Please enter a quiz name');
+        showAlertModal('Input Required', 'Please enter a quiz name', 'warning');
         return;
       }
 
       if (!quizClass.trim()) {
-        alert('Please enter a class name');
+        showAlertModal('Input Required', 'Please enter a class name', 'warning');
         return;
       }
 
@@ -45,20 +60,20 @@ const QuizCreator = () => {
       }
 
       setQuiz(parsedQuiz);
-      alert(`✅ Successfully parsed ${parsedQuiz.questions.length} questions!`);
+      showAlertModal('Success!', `✅ Successfully parsed ${parsedQuiz.questions.length} questions!`, 'success');
     } catch (error) {
-      alert('❌ Error parsing MCQs: ' + error.message);
+      showAlertModal('Error', `❌ Error parsing MCQs: ${error.message}`, 'error');
     }
   };
 
   const handleStartNow = async () => {
     if (!quiz) {
-      alert('Please parse MCQs first');
+      showAlertModal('Action Required', 'Please parse MCQs first', 'warning');
       return;
     }
 
     if (hasActiveQuiz) {
-      alert('❌ There is already an active quiz. Please end it first before starting a new one.');
+      showAlertModal('Active Quiz Running', '❌ There is already an active quiz. Please end it first before starting a new one.', 'error');
       return;
     }
 
@@ -75,7 +90,7 @@ const QuizCreator = () => {
       console.log('🚀 Starting quiz with data:', quizToStart);
       
       await setActiveQuiz(quizToStart);
-      alert('🚀 Quiz started successfully! Students can now join.');
+      showAlertModal('Quiz Started!', '🚀 Quiz started successfully! Students can now join.', 'success');
       
       // Reset form
       setMcqText('');
@@ -85,70 +100,69 @@ const QuizCreator = () => {
       setQuiz(null);
     } catch (error) {
       console.error('Error starting quiz:', error);
-      alert('Error starting quiz: ' + error.message);
+      showAlertModal('Error', `Error starting quiz: ${error.message}`, 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // In your handleScheduleQuiz function, replace with:
-const handleScheduleQuiz = async () => {
-  if (!quiz) {
-    alert('Please parse MCQs first');
-    return;
-  }
+  const handleScheduleQuiz = async () => {
+    if (!quiz) {
+      showAlertModal('Action Required', 'Please parse MCQs first', 'warning');
+      return;
+    }
 
-  if (!scheduledTime) {
-    alert('Please set a schedule time first');
-    return;
-  }
+    if (!scheduledTime) {
+      showAlertModal('Input Required', 'Please set a schedule time first', 'warning');
+      return;
+    }
 
-  const scheduleTime = new Date(scheduledTime).getTime();
-  const now = Date.now();
+    const scheduleTime = new Date(scheduledTime).getTime();
+    const now = Date.now();
 
-  if (scheduleTime <= now) {
-    alert('Scheduled time must be in the future');
-    return;
-  }
+    if (scheduleTime <= now) {
+      showAlertModal('Invalid Time', 'Scheduled time must be in the future', 'warning');
+      return;
+    }
 
-  setIsLoading(true);
-  try {
-    const scheduledQuiz = {
-      ...quiz,
-      status: 'scheduled',
-      scheduledTime: scheduleTime
-    };
+    setIsLoading(true);
+    try {
+      const scheduledQuiz = {
+        ...quiz,
+        status: 'scheduled',
+        scheduledTime: scheduleTime
+      };
 
-    await saveQuizToFirestore(scheduledQuiz);
-    alert(`✅ Quiz scheduled for ${new Date(scheduleTime).toLocaleString()}`);
-    
-    // Reset form
-    setMcqText('');
-    setQuizName('');
-    setQuizClass('');
-    setScheduledTime('');
-    setQuiz(null);
-  } catch (error) {
-    console.error('Error scheduling quiz:', error);
-    alert('Error scheduling quiz: ' + error.message);
-  } finally {
-    setIsLoading(false);
-  }
-};
+      await saveQuizToFirestore(scheduledQuiz);
+      showAlertModal('Quiz Scheduled!', `✅ Quiz scheduled for ${new Date(scheduleTime).toLocaleString()}`, 'success');
+      
+      // Reset form
+      setMcqText('');
+      setQuizName('');
+      setQuizClass('');
+      setScheduledTime('');
+      setQuiz(null);
+    } catch (error) {
+      console.error('Error scheduling quiz:', error);
+      showAlertModal('Error', `Error scheduling quiz: ${error.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSaveDraft = async () => {
     if (!quiz) {
-      alert('Please parse MCQs first');
+      showAlertModal('Action Required', 'Please parse MCQs first', 'warning');
       return;
     }
 
     setIsLoading(true);
     try {
       await saveQuizToFirestore(quiz);
-      alert('✅ Quiz saved as draft!');
+      showAlertModal('Draft Saved!', '✅ Quiz saved as draft!', 'success');
     } catch (error) {
       console.error('Error saving draft:', error);
-      alert('Error saving draft: ' + error.message);
+      showAlertModal('Error', `Error saving draft: ${error.message}`, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -321,6 +335,15 @@ Correct: C`}
           </div>
         </div>
       )}
+
+      {/* Modal Component */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+      />
     </div>
   );
 };

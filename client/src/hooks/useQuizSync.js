@@ -7,45 +7,32 @@ export const useQuizSync = (activeQuiz) => {
   const [quizStatus, setQuizStatus] = useState('waiting');
   const intervalRef = useRef(null);
 
-  // IMPROVED: Calculate missed questions with better accuracy
   const calculateMissedQuestions = (studentJoinTime) => {
     if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
       return 0;
     }
 
-    const quizStartTime = activeQuiz.quizStartTime;
-    const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
-    
-    // If student joined before quiz started, no missed questions
-    if (studentJoinTime <= quizStartTime) {
+    if (studentJoinTime <= activeQuiz.quizStartTime) {
       return 0;
     }
 
-    // Calculate how many questions were missed based on join time
-    const timeLate = studentJoinTime - quizStartTime;
+    const timeLate = studentJoinTime - activeQuiz.quizStartTime;
+    const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     const missedCount = Math.floor(timeLate / timePerQuestion);
     
-    // Ensure we don't mark more than total questions as missed
-    const actualMissed = Math.min(missedCount, activeQuiz.questions.length);
-    
-    console.log('🎯 Late joiner calculation:', {
-      joinTime: new Date(studentJoinTime).toLocaleTimeString(),
-      quizStart: new Date(quizStartTime).toLocaleTimeString(),
-      timeLate: Math.round(timeLate/1000) + 's',
-      missedCount: actualMissed,
-      totalQuestions: activeQuiz.questions.length
-    });
-    
-    return actualMissed;
+    return Math.min(missedCount, activeQuiz.questions.length);
   };
 
-  // IMPROVED: Get current question index with waiting room support
   const getCurrentQuestionIndex = () => {
     if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
       return 0;
     }
 
-    // If quiz is in waiting room or hasn't started, show first question
+    // Handle paused state
+    if (activeQuiz.status === 'paused') {
+      return activeQuiz.currentQuestionIndex || 0;
+    }
+
     if (activeQuiz.status === 'waiting' || Date.now() < activeQuiz.quizStartTime) {
       return 0;
     }
@@ -57,17 +44,18 @@ export const useQuizSync = (activeQuiz) => {
     const elapsedTime = now - quizStartTime;
     const questionIndex = Math.floor(elapsedTime / timePerQuestion);
     
-    // Don't go beyond total questions
     return Math.min(questionIndex, activeQuiz.questions.length - 1);
   };
 
-  // IMPROVED: Calculate time remaining with waiting room
   const getTimeRemaining = () => {
     if (!activeQuiz || !activeQuiz.quizStartTime) {
       return 0;
     }
 
-    // If quiz is in waiting room, show countdown to start
+    if (activeQuiz.status === 'paused') {
+      return activeQuiz.timePerQuestion || 30;
+    }
+
     if (activeQuiz.status === 'waiting') {
       const timeUntilStart = activeQuiz.quizStartTime - Date.now();
       return Math.max(0, Math.floor(timeUntilStart / 1000));
@@ -84,7 +72,6 @@ export const useQuizSync = (activeQuiz) => {
     return Math.max(0, Math.floor(timeLeft / 1000));
   };
 
-  // IMPROVED: Check if quiz ended
   const hasQuizEnded = () => {
     if (!activeQuiz || !activeQuiz.questions || !activeQuiz.quizStartTime) {
       return false;
@@ -97,7 +84,6 @@ export const useQuizSync = (activeQuiz) => {
     return (now - quizStartTime) >= totalQuizTime;
   };
 
-  // IMPROVED: Auto-progress questions with waiting room support
   useEffect(() => {
     if (!activeQuiz) {
       setQuizStatus('waiting');
@@ -107,8 +93,6 @@ export const useQuizSync = (activeQuiz) => {
       return;
     }
 
-    console.log('🟢 Starting quiz synchronization, status:', activeQuiz.status);
-
     const updateQuizState = () => {
       const serverIndex = getCurrentQuestionIndex();
       const remaining = getTimeRemaining();
@@ -117,38 +101,37 @@ export const useQuizSync = (activeQuiz) => {
       setCurrentQuestionIndex(serverIndex);
       setTimeRemaining(remaining);
 
-      // Update status based on quiz state
+      // Handle different statuses
       if (activeQuiz.status === 'waiting') {
         setQuizStatus('waiting');
-        
-        // Auto-start quiz when countdown reaches 0
         if (Date.now() >= activeQuiz.quizStartTime) {
-          console.log('🚀 Auto-starting quiz from waiting room');
           startQuizFromWaitingRoom();
         }
-      } else if (ended) {
+      } else if (activeQuiz.status === 'paused') {
+        setQuizStatus('paused');
+      } else if (ended || activeQuiz.status === 'inactive') {
         setQuizStatus('ended');
       } else {
         setQuizStatus('active');
       }
 
-      // Update server if question changed and quiz is active
-      if (serverIndex !== activeQuiz.currentQuestionIndex && activeQuiz.status === 'active' && !ended) {
+      // Update server if needed
+      if (serverIndex !== activeQuiz.currentQuestionIndex && 
+          activeQuiz.status === 'active' && 
+          !ended) {
         updateCurrentQuestion(serverIndex);
       }
 
-      // End quiz if time's up
+      // Auto-end quiz
       if (ended && activeQuiz.status === 'active') {
-        console.log('🏁 Quiz ended naturally');
         setQuizStatus('ended');
         endActiveQuiz();
         clearInterval(intervalRef.current);
       }
     };
 
-    // Update every second
     intervalRef.current = setInterval(updateQuizState, 1000);
-    updateQuizState(); // Initial update
+    updateQuizState();
 
     return () => {
       if (intervalRef.current) {
@@ -161,8 +144,6 @@ export const useQuizSync = (activeQuiz) => {
     currentQuestionIndex,
     timeRemaining,
     quizStatus,
-    calculateMissedQuestions,
-    getCurrentQuestionIndex,
-    hasQuizEnded
+    calculateMissedQuestions
   };
 };

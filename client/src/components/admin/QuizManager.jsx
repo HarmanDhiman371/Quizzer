@@ -4,12 +4,24 @@ import {
   deleteQuizFromFirestore, 
   setActiveQuiz
 } from '../../utils/firestore';
+import Modal from '../alert/Modal'; // Import the Modal component
 
 const QuizManager = () => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [startingQuiz, setStartingQuiz] = useState(null);
   const [countdown, setCountdown] = useState(0);
+  
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    type: 'info',
+    onConfirm: null,
+    confirmText: 'Confirm',
+    cancelText: 'Cancel'
+  });
 
   useEffect(() => {
     loadQuizzes();
@@ -26,6 +38,30 @@ const QuizManager = () => {
     return () => clearTimeout(timer);
   }, [countdown]);
 
+  // Function to show modal
+  const showAlertModal = (title, message, type = 'info') => {
+    setModalConfig({ 
+      title, 
+      message, 
+      type,
+      onConfirm: null 
+    });
+    setShowModal(true);
+  };
+
+  // Function to show confirmation modal
+  const showConfirmModal = (title, message, onConfirm, confirmText = 'Confirm', cancelText = 'Cancel') => {
+    setModalConfig({
+      title,
+      message,
+      type: 'confirm',
+      onConfirm,
+      confirmText,
+      cancelText
+    });
+    setShowModal(true);
+  };
+
   const loadQuizzes = async () => {
     try {
       setLoading(true);
@@ -33,7 +69,7 @@ const QuizManager = () => {
       setQuizzes(scheduledQuizzes);
     } catch (error) {
       console.error('Error loading quizzes:', error);
-      alert('Error loading quizzes: ' + error.message);
+      showAlertModal('Error', `Error loading quizzes: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -62,25 +98,29 @@ const QuizManager = () => {
       
     } catch (error) {
       console.error('Error starting quiz:', error);
-      alert('Error starting quiz: ' + error.message);
+      showAlertModal('Error', `Error starting quiz: ${error.message}`, 'error');
       setStartingQuiz(null);
       setCountdown(0);
     }
   };
 
   const handleDeleteQuiz = async (quizId, quizName) => {
-    if (!window.confirm(`Are you sure you want to delete "${quizName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await deleteQuizFromFirestore(quizId);
-      alert('🗑️ Quiz deleted successfully!');
-      await loadQuizzes();
-    } catch (error) {
-      console.error('Error deleting quiz:', error);
-      alert('Error deleting quiz: ' + error.message);
-    }
+    showConfirmModal(
+      'Delete Quiz',
+      `Are you sure you want to delete "${quizName}"? This action cannot be undone.`,
+      async () => {
+        try {
+          await deleteQuizFromFirestore(quizId);
+          showAlertModal('Success', '🗑️ Quiz deleted successfully!', 'success');
+          await loadQuizzes();
+        } catch (error) {
+          console.error('Error deleting quiz:', error);
+          showAlertModal('Error', `Error deleting quiz: ${error.message}`, 'error');
+        }
+      },
+      'Delete',
+      'Cancel'
+    );
   };
 
   if (loading) {
@@ -163,6 +203,18 @@ const QuizManager = () => {
           ))
         )}
       </div>
+
+      {/* Modal Component */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onConfirm={modalConfig.onConfirm}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+      />
     </div>
   );
 };

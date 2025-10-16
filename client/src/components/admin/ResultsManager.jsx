@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getClassResults } from '../../utils/firestore'; // Fixed import path
+import { getAllClassResults, deleteClassResult } from '../../utils/firestore';
 
 const ResultsManager = () => {
   const [classResults, setClassResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState('all');
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     loadClassResults();
@@ -13,13 +14,29 @@ const ResultsManager = () => {
   const loadClassResults = async () => {
     try {
       setLoading(true);
-      const results = await getClassResults();
+      const results = await getAllClassResults();
       setClassResults(results);
     } catch (error) {
       console.error('Error loading class results:', error);
-      alert('Error loading results: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteResult = async (resultId, quizName) => {
+    if (!window.confirm(`Are you sure you want to delete results for "${quizName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingId(resultId);
+    try {
+      await deleteClassResult(resultId);
+      await loadClassResults(); // Reload the list
+    } catch (error) {
+      console.error('Error deleting result:', error);
+      alert('Error deleting result: ' + error.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -45,7 +62,7 @@ const ResultsManager = () => {
   return (
     <div className="results-manager">
       <div className="results-header">
-        <h3>🏆 Class Results & Rankings</h3>
+        <h3>🏆 Quiz Results & Rankings</h3>
         <div className="results-actions">
           <select 
             value={selectedClass}
@@ -65,7 +82,8 @@ const ResultsManager = () => {
 
       {filteredResults.length === 0 ? (
         <div className="empty-state">
-          <p>No results found for the selected class.</p>
+          <div className="empty-icon">📊</div>
+          <p>No quiz results found.</p>
           <p>Completed quiz results will appear here.</p>
         </div>
       ) : (
@@ -73,8 +91,17 @@ const ResultsManager = () => {
           {filteredResults.map((result) => (
             <div key={result.id} className="class-result-card">
               <div className="result-header">
-                <h4>{result.quizName}</h4>
-                <span className="class-badge">{result.quizClass}</span>
+                <div className="header-left">
+                  <h4>{result.quizName}</h4>
+                  <span className="class-badge">{result.quizClass}</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteResult(result.id, result.quizName)}
+                  disabled={deletingId === result.id}
+                  className="btn btn-danger btn-sm"
+                >
+                  {deletingId === result.id ? 'Deleting...' : '🗑️ Delete'}
+                </button>
               </div>
               
               <div className="result-meta">
@@ -119,6 +146,207 @@ const ResultsManager = () => {
           ))}
         </div>
       )}
+
+      <style jsx>{`
+        .results-manager {
+          padding: 0;
+        }
+
+        .results-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 30px;
+          flex-wrap: wrap;
+          gap: 15px;
+        }
+
+        .results-header h3 {
+          color: #2c3e50;
+          margin: 0;
+        }
+
+        .results-actions {
+          display: flex;
+          gap: 15px;
+          align-items: center;
+        }
+
+        .class-filter {
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          background: white;
+        }
+
+        .class-results-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+          gap: 20px;
+        }
+
+        .class-result-card {
+          background: white;
+          border-radius: 12px;
+          padding: 25px;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e9ecef;
+          transition: transform 0.2s ease;
+        }
+
+        .class-result-card:hover {
+          transform: translateY(-2px);
+        }
+
+        .result-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 15px;
+        }
+
+        .header-left h4 {
+          color: #2c3e50;
+          margin: 0 0 8px 0;
+          font-size: 1.2rem;
+        }
+
+        .class-badge {
+          background: #667eea;
+          color: white;
+          padding: 4px 12px;
+          border-radius: 15px;
+          font-size: 0.8rem;
+          font-weight: 600;
+        }
+
+        .result-meta {
+          margin-bottom: 20px;
+          padding-bottom: 15px;
+          border-bottom: 1px solid #e9ecef;
+        }
+
+        .completion-date, .participants-count {
+          color: #6c757d;
+          margin: 5px 0;
+          font-size: 0.9rem;
+        }
+
+        .top-rankings-section h5 {
+          color: #2c3e50;
+          margin-bottom: 15px;
+          font-size: 1rem;
+        }
+
+        .rankings-list {
+          space-y: 10px;
+        }
+
+        .ranking-item {
+          display: flex;
+          align-items: center;
+          padding: 12px;
+          background: #f8f9fa;
+          border-radius: 8px;
+          margin-bottom: 8px;
+          transition: background-color 0.2s ease;
+        }
+
+        .ranking-item:hover {
+          background: #e9ecef;
+        }
+
+        .rank-position {
+          width: 50px;
+          font-weight: bold;
+          font-size: 1rem;
+        }
+
+        .student-name {
+          flex: 1;
+          font-weight: 500;
+          color: #2c3e50;
+        }
+
+        .score-badge {
+          background: #28a745;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          margin-right: 8px;
+        }
+
+        .percentage-badge {
+          background: #17a2b8;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 0.8rem;
+          font-weight: 600;
+        }
+
+        .no-rankings {
+          text-align: center;
+          padding: 20px;
+          color: #6c757d;
+          background: #f8f9fa;
+          border-radius: 8px;
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: 60px 20px;
+          color: #6c757d;
+        }
+
+        .empty-icon {
+          font-size: 3rem;
+          margin-bottom: 15px;
+          opacity: 0.5;
+        }
+
+        .loading-state {
+          text-align: center;
+          padding: 60px 20px;
+        }
+
+        .loader {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #667eea;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+          .results-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .results-actions {
+            justify-content: space-between;
+          }
+
+          .class-results-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .result-header {
+            flex-direction: column;
+            gap: 10px;
+          }
+        }
+      `}</style>
     </div>
   );
 };

@@ -59,12 +59,14 @@ export const deleteQuizFromFirestore = async (quizId) => {
 };
 
 // Set active quiz with waiting room
+// Set active quiz with waiting room
 export const setActiveQuiz = async (quiz) => {
   try {
     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
     
     const activeQuizData = {
       ...quiz,
+      originalQuizId: quiz.id, // Preserve the original quiz ID
       quizStartTime: Date.now() + 10000, // Start in 10 seconds
       currentQuestionIndex: 0,
       totalParticipants: 0,
@@ -172,20 +174,32 @@ export const saveTopRankingsToClass = async (quiz) => {
 };
 
 // Enhanced end active quiz function
+// Enhanced end active quiz function
 export const endActiveQuiz = async () => {
   try {
     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
     const activeQuizDoc = await getDoc(activeQuizRef);
     
     if (activeQuizDoc.exists()) {
-      const activeQuiz = activeQuizDoc.data();
+      const activeQuiz = { id: activeQuizDoc.id, ...activeQuizDoc.data() };
+      
+      console.log('🎯 Ending quiz:', activeQuiz);
       
       // Save top rankings to class results before ending
-      if (activeQuiz.id) {
+      if (activeQuiz.id && activeQuiz.name) {
         await saveTopRankingsToClass(activeQuiz);
+        
+        // Mark the original quiz as completed and remove from scheduled
+        if (activeQuiz.originalQuizId) {
+          const originalQuizRef = doc(db, QUIZZES_COLLECTION, activeQuiz.originalQuizId);
+          await updateDoc(originalQuizRef, {
+            status: 'completed',
+            endedAt: serverTimestamp()
+          });
+        }
       }
       
-      // Clear active quiz
+      // Clear active quiz - this will trigger the real-time listeners
       await setDoc(activeQuizRef, {
         status: 'inactive',
         lastUpdated: serverTimestamp()
@@ -195,6 +209,51 @@ export const endActiveQuiz = async () => {
     }
   } catch (error) {
     console.error('Error ending quiz:', error);
+    throw error;
+  }
+};
+
+// Pause quiz
+export const pauseQuiz = async () => {
+  try {
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    if (activeQuizDoc.exists()) {
+      const currentData = activeQuizDoc.data();
+      await updateDoc(activeQuizRef, {
+        status: 'paused',
+        pauseStartTime: Date.now(),
+        lastUpdated: serverTimestamp()
+      });
+      console.log('⏸️ Quiz paused');
+    }
+  } catch (error) {
+    console.error('Error pausing quiz:', error);
+    throw error;
+  }
+};
+
+// Resume quiz
+export const resumeQuiz = async () => {
+  try {
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    if (activeQuizDoc.exists()) {
+      const currentData = activeQuizDoc.data();
+      const pauseDuration = Date.now() - (currentData.pauseStartTime || Date.now());
+      const newQuizStartTime = currentData.quizStartTime + pauseDuration;
+      
+      await updateDoc(activeQuizRef, {
+        status: 'active',
+        quizStartTime: newQuizStartTime,
+        lastUpdated: serverTimestamp()
+      });
+      console.log('▶️ Quiz resumed');
+    }
+  } catch (error) {
+    console.error('Error resuming quiz:', error);
     throw error;
   }
 };
@@ -350,20 +409,30 @@ export const incrementParticipantCount = async () => {
 };
 
 // Get quiz results
+// Get quiz results - ensure proper query
 export const getQuizResultsFromFirestore = async (quizId) => {
   try {
     const q = query(
       collection(db, RESULTS_COLLECTION), 
-      where('quizId', '==', quizId),
-      orderBy('score', 'desc')
+      where('quizId', '==', quizId)
+      // Remove orderBy if it causes issues, we'll sort manually
     );
     
     const querySnapshot = await getDocs(q);
     const results = [];
     querySnapshot.forEach((doc) => {
-      results.push({ id: doc.id, ...doc.data() });
+      const data = doc.data();
+      results.push({ 
+        id: doc.id, 
+        ...data,
+        // Ensure score is a number
+        score: Number(data.score) || 0,
+        percentage: Number(data.percentage) || 0
+      });
     });
-    return results;
+    
+    // Sort manually by score descending
+    return results.sort((a, b) => (b.score || 0) - (a.score || 0));
   } catch (error) {
     console.error('Error getting quiz results:', error);
     throw error;
@@ -392,7 +461,7 @@ export const getQuizzesFromFirestore = async () => {
   try {
     const q = query(
       collection(db, QUIZZES_COLLECTION),
-      where('status', '==', 'scheduled'),
+      where('status', 'in', ['scheduled', 'draft']), // Only show scheduled/draft, not ended
       orderBy('scheduledTime', 'asc')
     );
     
@@ -410,6 +479,26 @@ export const getQuizzesFromFirestore = async () => {
 
 // Get class results (top 5 rankings by class)
 export const getClassResults = async () => {
+  try {
+    const q = query(
+      collection(db, CLASS_RESULTS_COLLECTION),
+      orderBy('completedAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const classResults = [];
+    querySnapshot.forEach((doc) => {
+      classResults.push({ id: doc.id, ...doc.data() });
+    });
+    return classResults;
+  } catch (error) {
+    console.error('Error getting class results:', error);
+    throw error;
+  }
+};
+
+// Get all class results including completed ones
+export const getAllClassResults = async () => {
   try {
     const q = query(
       collection(db, CLASS_RESULTS_COLLECTION),
@@ -447,6 +536,67 @@ export const getScheduledQuizzes = async () => {
     return quizzes;
   } catch (error) {
     console.error('Error getting scheduled quizzes:', error);
+    throw error;
+  }
+};
+
+// Delete class result
+export const deleteClassResult = async (resultId) => {
+  try {
+    await deleteDoc(doc(db, CLASS_RESULTS_COLLECTION, resultId));
+    console.log('🗑️ Class result deleted:', resultId);
+    return true;
+  } catch (error) {
+    console.error('Error deleting class result:', error);
+    throw error;
+  }
+};
+// Add these functions to your existing firestore.js
+
+export const saveQuizResults = async (quizId, studentId, resultData) => {
+  try {
+    // Save to student's results
+    const studentResultRef = doc(db, 'students', studentId, 'results', quizId);
+    await setDoc(studentResultRef, resultData);
+
+    // Save to class results
+    const classResultRef = doc(db, 'quizzes', quizId, 'results', studentId);
+    await setDoc(classResultRef, resultData);
+
+    console.log('✅ Results saved successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Error saving results:', error);
+    throw error;
+  }
+};
+
+export const calculateRankings = async (quizId, studentId, score, timestamp) => {
+  try {
+    const resultsSnapshot = await getDocs(collection(db, 'quizzes', quizId, 'results'));
+    const allResults = [];
+    
+    resultsSnapshot.forEach(doc => {
+      const data = doc.data();
+      allResults.push({
+        studentId: data.studentId,
+        score: data.score,
+        timestamp: data.timestamp
+      });
+    });
+
+    // Sort by score (descending) and timestamp (ascending for tie-breaker)
+    const sortedResults = allResults.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.timestamp - b.timestamp;
+    });
+
+    const rank = sortedResults.findIndex(result => result.studentId === studentId) + 1;
+    const totalParticipants = sortedResults.length;
+
+    return { rank, totalParticipants };
+  } catch (error) {
+    console.error('❌ Error calculating rankings:', error);
     throw error;
   }
 };

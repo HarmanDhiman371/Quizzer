@@ -2,79 +2,142 @@ import React, { useState, useEffect } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
 import QuizInterface from './QuizInterface';
 import WaitingRoom from './WaitingRoom';
+import QuizResults from '../admin/QuizResults';
 import { saveOrUpdateQuizResult, getScheduledQuizzes } from '../../utils/firestore';
 
 const StudentQuiz = () => {
   const { activeQuiz, loading } = useQuiz();
   const [studentName, setStudentName] = useState(localStorage.getItem('studentName') || '');
+  const [joinTime, setJoinTime] = useState(Date.now());
   const [quizStarted, setQuizStarted] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
-  const [score, setScore] = useState(null);
+  const [finalScore, setFinalScore] = useState(null);
   const [scheduledQuizzes, setScheduledQuizzes] = useState([]);
-  const [scheduledLoading, setScheduledLoading] = useState(true);
   const [inWaitingRoom, setInWaitingRoom] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Save student name to localStorage when it changes
-  useEffect(() => {
-    if (studentName.trim()) {
-      localStorage.setItem('studentName', studentName.trim());
+  // Enhanced fullscreen with proper error handling
+  const enterFullscreen = async () => {
+    try {
+      const element = document.documentElement;
+      
+      if (element.requestFullscreen) {
+        await element.requestFullscreen();
+      } else if (element.webkitRequestFullscreen) {
+        await element.webkitRequestFullscreen();
+      } else if (element.mozRequestFullScreen) {
+        await element.mozRequestFullScreen();
+      } else if (element.msRequestFullscreen) {
+        await element.msRequestFullscreen();
+      }
+      
+      setIsFullscreen(true);
+      document.body.classList.add('quiz-fullscreen');
+      
+    } catch (error) {
+      console.log('Fullscreen not supported:', error);
     }
-  }, [studentName]);
-
-  // Load scheduled quizzes
-  useEffect(() => {
-    loadScheduledQuizzes();
-    const interval = setInterval(loadScheduledQuizzes, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Safe fullscreen functions
-  const enterFullscreen = () => {
-    const element = document.documentElement;
-    if (element.requestFullscreen) {
-      element.requestFullscreen().catch(err => {
-        console.log('Fullscreen error:', err);
-      });
-    } else if (element.mozRequestFullScreen) {
-      element.mozRequestFullScreen();
-    } else if (element.webkitRequestFullscreen) {
-      element.webkitRequestFullscreen();
-    } else if (element.msRequestFullscreen) {
-      element.msRequestFullscreen();
-    }
-    setIsFullscreen(true);
   };
 
-  const exitFullscreen = () => {
-    // Check if we're actually in fullscreen before trying to exit
-    if (document.fullscreenElement || 
-        document.webkitFullscreenElement || 
-        document.mozFullScreenElement || 
-        document.msFullscreenElement) {
+  const exitFullscreen = async () => {
+    try {
+      // Only attempt to exit if we're actually in fullscreen
+      if (document.fullscreenElement || 
+          document.webkitFullscreenElement || 
+          document.mozFullScreenElement ||
+          document.msFullscreenElement) {
+        
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          await document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen();
+        }
+      }
       
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(err => {
-          console.log('Exit fullscreen error:', err);
-        });
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
+      setIsFullscreen(false);
+      document.body.classList.remove('quiz-fullscreen');
+      
+    } catch (error) {
+      console.log('Exit fullscreen error:', error);
+    }
+  };
+
+  // Validate quiz data function
+  const validateQuizData = (quiz) => {
+    if (!quiz) {
+      console.error('No quiz data provided');
+      return false;
+    }
+    
+    if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+      console.error('Invalid or empty questions array');
+      return false;
+    }
+    
+    if (!quiz.quizDuration && !quiz.timePerQuestion) {
+      console.error('No time configuration found');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Auto-manage quiz states with improved logic
+  useEffect(() => {
+    if (!activeQuiz || !studentName.trim()) return;
+
+    console.log('🔄 Quiz status changed:', activeQuiz.status);
+    console.log('🎯 Has Questions:', activeQuiz.questions?.length || 0);
+
+    // Validate quiz data before proceeding
+    if (!validateQuizData(activeQuiz)) {
+      console.error('Invalid quiz data, cannot proceed');
+      return;
+    }
+
+    if (activeQuiz.status === 'waiting' && !quizStarted && !inWaitingRoom && !quizCompleted) {
+      console.log('🚶‍♂️ Moving to waiting room');
+      setInWaitingRoom(true);
+      setQuizStarted(false);
+      setQuizCompleted(false);
+    } 
+    else if (activeQuiz.status === 'active' && inWaitingRoom && !quizStarted) {
+      console.log('🎬 Starting quiz from waiting room');
+      setInWaitingRoom(false);
+      setQuizStarted(true);
+      enterFullscreen();
+    }
+    else if (activeQuiz.status === 'active' && !quizStarted && !inWaitingRoom && !quizCompleted) {
+      console.log('🎬 Direct quiz start (active status)');
+      setQuizStarted(true);
+      enterFullscreen();
+    }
+    else if (activeQuiz.status === 'inactive' && (quizStarted || inWaitingRoom)) {
+      console.log('🛑 Quiz ended by admin');
+      if (quizStarted) {
+        // If quiz was active, complete it with current score
+        handleQuizComplete(finalScore || 0);
+      } else {
+        // If in waiting room, just reset states
+        setInWaitingRoom(false);
+        setQuizStarted(false);
+        exitFullscreen();
       }
     }
-    setIsFullscreen(false);
-  };
+  }, [activeQuiz, studentName, quizStarted, inWaitingRoom, quizCompleted]);
 
-  // Handle fullscreen change
+  // Fullscreen change listener
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!(document.fullscreenElement || 
-                        document.webkitFullscreenElement || 
-                        document.mozFullScreenElement || 
-                        document.msFullscreenElement));
+      const isFullscreen = !!(document.fullscreenElement || 
+                             document.webkitFullscreenElement || 
+                             document.mozFullScreenElement ||
+                             document.msFullscreenElement);
+      setIsFullscreen(isFullscreen);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -90,219 +153,134 @@ const StudentQuiz = () => {
     };
   }, []);
 
-  // Auto-manage waiting room based on quiz status
+  // Clean up fullscreen on unmount
   useEffect(() => {
-    if (!activeQuiz || !studentName.trim()) return;
-
-    console.log('🎯 Quiz Status:', activeQuiz.status);
-    
-    if ((activeQuiz.status === 'waiting' && !quizStarted && !inWaitingRoom)) {
-      // Auto-join waiting room for waiting quizzes
-      setInWaitingRoom(true);
-    } else if ((activeQuiz.status === 'active' && inWaitingRoom)) {
-      // Auto-start quiz when it becomes active
-      setInWaitingRoom(false);
-      setQuizStarted(true);
-      enterFullscreen();
-    } else if (activeQuiz.status === 'completed') {
-      // Handle quiz completion
-      setInWaitingRoom(false);
-      setQuizStarted(false);
-      exitFullscreen();
-    }
-  }, [activeQuiz, studentName, quizStarted, inWaitingRoom]);
-
-  // Copy protection
-  useEffect(() => {
-    const handleCopy = (e) => {
-      if (quizStarted) {
-        e.preventDefault();
-        alert('Copying is disabled during the quiz!');
-      }
-    };
-
-    const handleContextMenu = (e) => {
-      if (quizStarted) {
-        e.preventDefault();
-        alert('Right-click is disabled during the quiz!');
-      }
-    };
-
-    const handleKeyDown = (e) => {
-      if (quizStarted && ((e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X' || e.key === 'v' || e.key === 'V')) || e.key === 'PrintScreen' || e.key === 'F12')) {
-        e.preventDefault();
-        alert('This action is disabled during the quiz!');
-      }
-    };
-
-    document.addEventListener('copy', handleCopy);
-    document.addEventListener('cut', handleCopy);
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('keydown', handleKeyDown);
-
     return () => {
-      document.removeEventListener('copy', handleCopy);
-      document.removeEventListener('cut', handleCopy);
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('keydown', handleKeyDown);
+      exitFullscreen();
     };
-  }, [quizStarted]);
-
-  const loadScheduledQuizzes = async () => {
-    try {
-      const quizzes = await getScheduledQuizzes();
-      setScheduledQuizzes(quizzes);
-    } catch (error) {
-      console.error('❌ Error loading scheduled quizzes:', error);
-    } finally {
-      setScheduledLoading(false);
-    }
-  };
+  }, []);
 
   const handleStartQuiz = () => {
     if (!studentName.trim()) {
-      alert('Please enter your name');
+      alert('Please enter your name to continue.');
       return;
     }
     
     if (!activeQuiz) {
-      alert('No active quiz found');
+      alert('No active quiz available.');
       return;
     }
 
-    console.log('🎯 Starting quiz process:', activeQuiz.status);
-    
+    // Validate quiz data before starting
+    if (!validateQuizData(activeQuiz)) {
+      alert('Quiz data is invalid. Please contact your instructor.');
+      return;
+    }
+
+    // Save student name to localStorage
+    localStorage.setItem('studentName', studentName.trim());
+    setJoinTime(Date.now());
+
     if (activeQuiz.status === 'waiting') {
-      // Join waiting room for scheduled quizzes
+      console.log('🚶‍♂️ Joining waiting room');
       setInWaitingRoom(true);
     } else if (activeQuiz.status === 'active') {
-      // Start quiz immediately for active quizzes
+      console.log('🎬 Starting quiz immediately');
       setQuizStarted(true);
       enterFullscreen();
     }
   };
 
   const handleQuizStarting = () => {
+    console.log('🎬 Quiz starting from waiting room');
     setInWaitingRoom(false);
     setQuizStarted(true);
     enterFullscreen();
   };
 
-  const handleQuizComplete = async (finalScore) => {
+  const handleQuizComplete = async (score) => {
+    console.log('🏁 Quiz Complete - Final Score:', score);
+    
+    // Ensure score is a number
+    const numericScore = Number(score) || 0;
+    
+    // Update state first
+    setFinalScore(numericScore);
+    setQuizCompleted(true);
+    setQuizStarted(false);
+    setInWaitingRoom(false);
+    
     try {
-      const result = {
-        studentName: studentName.trim(),
-        score: finalScore,
-        totalQuestions: activeQuiz.questions.length,
-        percentage: Math.round((finalScore / activeQuiz.questions.length) * 100),
-        quizId: activeQuiz.id,
-        quizName: activeQuiz.name,
-        joinTime: Date.now(),
-        completedAt: Date.now()
-      };
+      if (activeQuiz && validateQuizData(activeQuiz)) {
+        const totalQuestions = activeQuiz.questions?.length || 0;
+        const percentage = totalQuestions > 0 ? Math.round((numericScore / totalQuestions) * 100) : 0;
+        
+        const result = {
+          studentName: studentName.trim(),
+          score: numericScore,
+          totalQuestions: totalQuestions,
+          percentage: percentage,
+          accuracy: percentage, // Add accuracy field for consistency
+          quizId: activeQuiz.id,
+          quizName: activeQuiz.name,
+          joinTime: joinTime,
+          completedAt: Date.now()
+        };
 
-      await saveOrUpdateQuizResult(result);
-      setScore(finalScore);
-      setQuizCompleted(true);
-      exitFullscreen();
+        console.log('💾 Saving final result:', result);
+        await saveOrUpdateQuizResult(result);
+        console.log('✅ Results saved successfully');
+      } else {
+        console.error('Cannot save results: Invalid quiz data');
+      }
     } catch (error) {
-      console.error('Error saving result:', error);
+      console.error('❌ Error saving result:', error);
+    } finally {
+      // Always exit fullscreen
+      await exitFullscreen();
     }
   };
 
-  // Helper function to calculate time remaining
-  const getTimeRemaining = (scheduledTime) => {
-    const now = Date.now();
-    const timeLeft = scheduledTime - now;
-    
-    if (timeLeft <= 0) return 'Starting soon...';
-    
-    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${seconds}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
-    } else {
-      return `${seconds}s`;
-    }
+  const handleRetakeQuiz = () => {
+    console.log('🔄 Retaking quiz');
+    setQuizCompleted(false);
+    setFinalScore(null);
+    setInWaitingRoom(false);
+    setQuizStarted(false);
   };
 
-  // Show loading state
   if (loading) {
     return (
-      <div className="loading-state">
-        <div className="loader"></div>
-        <p>Loading quiz data...</p>
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading Quiz Platform...</p>
       </div>
     );
   }
 
-  // Show waiting room
+  // Render appropriate component based on state
   if (inWaitingRoom && activeQuiz) {
+    return <WaitingRoom activeQuiz={activeQuiz} studentName={studentName} onQuizStarting={handleQuizStarting} />;
+  }
+
+  if (quizCompleted && activeQuiz) {
     return (
-      <WaitingRoom 
-        activeQuiz={activeQuiz}
-        studentName={studentName}
-        onQuizStarting={handleQuizStarting}
+      <QuizResults 
+        score={finalScore} 
+        activeQuiz={activeQuiz} 
+        studentName={studentName} 
+        onRetake={handleRetakeQuiz} 
       />
     );
   }
 
-  // Show quiz completed state
-  if (quizCompleted) {
-    return (
-      <div className="quiz-results">
-        <div className="results-container">
-          <h2>🎉 Quiz Completed!</h2>
-          <div className="score-card">
-            <div className="score-circle">
-              <span className="score-value">{score}</span>
-              <span className="score-total">/{activeQuiz.questions.length}</span>
-            </div>
-            <div className="score-details">
-              <h3>Your Performance</h3>
-              <p className="percentage">{Math.round((score / activeQuiz.questions.length) * 100)}%</p>
-              <div className="quiz-info">
-                <p><strong>Quiz:</strong> {activeQuiz.name}</p>
-                <p><strong>Class:</strong> {activeQuiz.class}</p>
-              </div>
-            </div>
-          </div>
-          <button 
-            onClick={() => {
-              setQuizStarted(false);
-              setQuizCompleted(false);
-              setScore(null);
-              setInWaitingRoom(false);
-            }}
-            className="btn btn-primary"
-          >
-            Take Another Quiz
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show active quiz interface
-  if (quizStarted && activeQuiz) {
+  if (quizStarted && activeQuiz && validateQuizData(activeQuiz)) {
     return (
       <div className="quiz-container">
-        {!isFullscreen && (
-          <div className="fullscreen-warning">
-            ⚠️ Please enter fullscreen mode for the best experience
-            <button onClick={enterFullscreen} className="btn btn-warning btn-sm">
-              Enter Fullscreen
-            </button>
-          </div>
-        )}
         <QuizInterface 
-          activeQuiz={activeQuiz}
-          studentName={studentName}
-          onQuizComplete={handleQuizComplete}
+          activeQuiz={activeQuiz} 
+          studentName={studentName} 
+          onQuizComplete={handleQuizComplete} 
         />
       </div>
     );
@@ -310,167 +288,592 @@ const StudentQuiz = () => {
 
   // Show active quiz lobby
   if (activeQuiz && (activeQuiz.status === 'active' || activeQuiz.status === 'waiting')) {
+    const totalQuestions = activeQuiz.questions?.length || 0;
+    const hasValidQuestions = totalQuestions > 0;
+
     return (
       <div className="quiz-lobby">
-        <div className="lobby-header">
-          <h2>🎯 {activeQuiz.name}</h2>
-          <span className={`quiz-status ${activeQuiz.status === 'waiting' ? 'waiting' : 'active'}`}>
-            {activeQuiz.status === 'waiting' ? '🕐 STARTING SOON' : 'LIVE'}
-          </span>
-        </div>
-        
-        <div className="quiz-info">
-          <p><strong>Class:</strong> {activeQuiz.class}</p>
-          <p><strong>Questions:</strong> {activeQuiz.questions?.length || 0}</p>
-          <p><strong>Time per Question:</strong> {activeQuiz.timePerQuestion} seconds</p>
-          {activeQuiz.status === 'waiting' && activeQuiz.quizStartTime && (
-            <p><strong>Starts in:</strong> {Math.ceil((activeQuiz.quizStartTime - Date.now()) / 1000)} seconds</p>
-          )}
-        </div>
-
-        {activeQuiz.status === 'waiting' && (
-          <div className="waiting-notice">
-            <div className="waiting-icon">⏳</div>
-            <h3>Quiz Starting Soon</h3>
-            <p>Join the waiting room to be ready when the quiz starts.</p>
+        <div className="lobby-card">
+          <div className="quiz-brand">
+            <div className="brand-icon">🎯</div>
+            <h1>EBI Quiz Platform</h1>
           </div>
-        )}
 
-        <div className="join-section">
-          {!studentName.trim() && (
+          <div className="quiz-header">
+            <h2>{activeQuiz.name}</h2>
+            <span className={`status-badge ${activeQuiz.status}`}>
+              {activeQuiz.status === 'waiting' ? 'STARTING SOON' : 'LIVE NOW'}
+            </span>
+          </div>
+          
+          <div className="quiz-meta-grid">
+            <div className="meta-item">
+              <span className="meta-icon">🏫</span>
+              <div className="meta-content">
+                <span className="label">Class</span>
+                <span className="value">{activeQuiz.class}</span>
+              </div>
+            </div>
+            <div className="meta-item">
+              <span className="meta-icon">📝</span>
+              <div className="meta-content">
+                <span className="label">Questions</span>
+                <span className="value">
+                  {hasValidQuestions ? totalQuestions : 'N/A'}
+                  {!hasValidQuestions && <span style={{color: '#dc3545', fontSize: '0.8em'}}> (Invalid)</span>}
+                </span>
+              </div>
+            </div>
+            <div className="meta-item">
+              <span className="meta-icon">⏱️</span>
+              <div className="meta-content">
+                <span className="label">Time</span>
+                <span className="value">
+                  {activeQuiz.quizDuration ? `${activeQuiz.quizDuration}m` : 
+                   activeQuiz.timePerQuestion ? `${activeQuiz.timePerQuestion}s/q` : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {!hasValidQuestions && (
+            <div className="warning-banner">
+              ⚠️ This quiz has configuration issues. Please contact your instructor.
+            </div>
+          )}
+
+          <div className="join-section">
+            <div className="input-group">
+              <input
+                type="text"
+                placeholder="Enter your full name"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                className="name-input"
+                maxLength={50}
+              />
+            </div>
+            <button 
+              onClick={handleStartQuiz}
+              disabled={!studentName.trim() || !hasValidQuestions}
+              className="start-btn"
+            >
+              {activeQuiz.status === 'waiting' ? 'Join Waiting Room' : 'Start Assessment'}
+            </button>
+          </div>
+
+          {activeQuiz.status === 'waiting' && activeQuiz.quizStartTime && (
+            <div className="countdown-info">
+              <div className="countdown-text">
+                Starts in: {Math.max(0, Math.ceil((activeQuiz.quizStartTime - Date.now()) / 1000))}s
+              </div>
+            </div>
+          )}
+
+          <div className="quiz-instructions">
+            <h4>Instructions:</h4>
+            <ul>
+              <li>Ensure you have a stable internet connection</li>
+              <li>The quiz will open in fullscreen mode</li>
+              <li>Do not refresh the page during the quiz</li>
+              <li>Answer all questions before time runs out</li>
+            </ul>
+          </div>
+        </div>
+
+        <style jsx>{`
+          .quiz-lobby {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+
+          .lobby-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 50px 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            max-width: 500px;
+            width: 100%;
+            animation: slideUp 0.6s ease-out;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+          }
+
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          .quiz-brand {
+            text-align: center;
+            margin-bottom: 40px;
+          }
+
+          .brand-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+          }
+
+          .quiz-brand h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 700;
+          }
+
+          .quiz-header {
+            text-align: center;
+            margin-bottom: 40px;
+          }
+
+          .quiz-header h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 2rem;
+            font-weight: 700;
+          }
+
+          .status-badge {
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .status-badge.waiting {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #856404;
+          }
+
+          .status-badge.active {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+          }
+
+          .quiz-meta-grid {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 30px;
+          }
+
+          .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 16px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+          }
+
+          .meta-icon {
+            font-size: 1.5rem;
+          }
+
+          .meta-content {
+            flex: 1;
+          }
+
+          .label {
+            display: block;
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            font-weight: 600;
+          }
+
+          .value {
+            display: block;
+            color: #2c3e50;
+            font-weight: 700;
+            font-size: 1.1rem;
+          }
+
+          .warning-banner {
+            background: linear-gradient(135deg, #ffc107, #ffca28);
+            color: #856404;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+            border: 1px solid #ffeaa7;
+          }
+
+          .join-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 30px;
+          }
+
+          .input-group {
+            position: relative;
+          }
+
+          .name-input {
+            width: 100%;
+            padding: 18px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+          }
+
+          .name-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+          }
+
+          .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+          }
+
+          .start-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+          }
+
+          .start-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            background: #6c757d;
+          }
+
+          .countdown-info {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 193, 7, 0.1);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+          }
+
+          .countdown-text {
+            color: #856404;
+            font-weight: 600;
+            font-size: 1rem;
+          }
+
+          .quiz-instructions {
+            background: rgba(108, 117, 125, 0.1);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(108, 117, 125, 0.2);
+          }
+
+          .quiz-instructions h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+          }
+
+          .quiz-instructions ul {
+            color: #6c757d;
+            padding-left: 20px;
+            margin: 0;
+          }
+
+          .quiz-instructions li {
+            margin-bottom: 8px;
+            line-height: 1.4;
+          }
+
+          .loading-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+          }
+
+          .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+          }
+
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+
+          @media (max-width: 768px) {
+            .lobby-card {
+              padding: 40px 25px;
+              margin: 20px;
+            }
+
+            .quiz-brand h1 {
+              font-size: 1.5rem;
+            }
+
+            .quiz-header h2 {
+              font-size: 1.6rem;
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // No active quiz - show portal
+  return (
+    <div className="student-portal">
+      <div className="portal-container">
+        <div className="portal-header">
+          <div className="brand-section">
+            <div className="brand-logo">🎯</div>
+            <h1>EBI Quiz Platform</h1>
+            <p>Professional Assessment System</p>
+          </div>
+          
+          <div className="student-info-card">
+            <h3>Student Information</h3>
             <input
               type="text"
               placeholder="Enter your full name"
               value={studentName}
               onChange={(e) => setStudentName(e.target.value)}
-              className="name-input"
+              className="portal-input"
+              maxLength={50}
             />
-          )}
-          <button 
-            onClick={handleStartQuiz}
-            disabled={!studentName.trim()}
-            className={`btn ${activeQuiz.status === 'waiting' ? 'btn-warning' : 'btn-success'}`}
-          >
-            {activeQuiz.status === 'waiting' ? '🚪 Join Waiting Room' : '🎯 Start Quiz Now'}
-          </button>
-        </div>
-
-        {studentName.trim() && (
-          <div className="student-welcome">
-            <p>Welcome, <strong>{studentName}</strong>! Ready to start the quiz?</p>
-          </div>
-        )}
-
-        <div className="quiz-tips">
-          <h4>💡 Important Instructions</h4>
-          <ul>
-            <li>📱 Quiz will open in <strong>fullscreen mode</strong></li>
-            <li>⏱️ Each question has {activeQuiz.timePerQuestion} seconds</li>
-            <li>🚫 Copying questions/answers is <strong>disabled</strong></li>
-            <li>📵 Do not refresh or leave the page during quiz</li>
-            <li>🎯 Select answers quickly - time is limited!</li>
-          </ul>
-        </div>
-      </div>
-    );
-  }
-
-  // Show no active quiz state with scheduled quizzes
-  return (
-    <div className="no-quiz">
-      <div className="welcome-section">
-        <h2>📚 Student Quiz Portal</h2>
-        <p>Enter your name and join active quizzes or check scheduled ones below.</p>
-        
-        <div className="student-info">
-          <input
-            type="text"
-            placeholder="Enter your full name for all quizzes"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            className="name-input"
-          />
-          {studentName.trim() && (
-            <p className="welcome-message">Welcome, {studentName}! You're all set for any quiz.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Scheduled Quizzes Section */}
-      <div className="scheduled-quizzes-section">
-        <h3>📅 Upcoming Quizzes</h3>
-        
-        {scheduledLoading ? (
-          <div className="loading-state">
-            <div className="loader"></div>
-            <p>Loading scheduled quizzes...</p>
-          </div>
-        ) : scheduledQuizzes.length > 0 ? (
-          <div className="scheduled-quizzes-grid">
-            {scheduledQuizzes.map((quiz) => (
-              <div key={quiz.id} className="quiz-card scheduled">
-                <div className="quiz-info">
-                  <h4>{quiz.name}</h4>
-                  <p className="quiz-class">Class: {quiz.class}</p>
-                  <div className="scheduled-time">
-                    <span>🕒 Starts at: {new Date(quiz.scheduledTime).toLocaleString()}</span>
-                  </div>
-                  <div className="time-remaining">
-                    <span>⏰ Starts in: {getTimeRemaining(quiz.scheduledTime)}</span>
-                  </div>
-                  <div className="quiz-details">
-                    <div className="detail">
-                      <span>Questions</span>
-                      <strong>{quiz.questions?.length || 0}</strong>
-                    </div>
-                    <div className="detail">
-                      <span>Time per Q</span>
-                      <strong>{quiz.timePerQuestion}s</strong>
-                    </div>
-                    <div className="detail">
-                      <span>Total Time</span>
-                      <strong>{Math.ceil((quiz.questions?.length || 0) * quiz.timePerQuestion / 60)}min</strong>
-                    </div>
-                  </div>
-                </div>
-                <div className="quiz-notice">
-                  <p>🔔 This quiz will start automatically at the scheduled time</p>
-                  {studentName.trim() && (
-                    <p className="ready-message">✅ You're registered as: {studentName}</p>
-                  )}
-                </div>
+            {studentName.trim() && (
+              <div className="welcome-message">
+                Welcome, <strong>{studentName}</strong>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="no-scheduled-quizzes">
-            <p>No upcoming quizzes scheduled. Check back later!</p>
-          </div>
-        )}
-      </div>
-
-      {/* Instructions Section */}
-      <div className="instructions-section">
-        <h3>ℹ️ How it Works</h3>
-        <div className="instructions-grid">
-          <div className="instruction-card">
-            <h4>📝 Join Quiz</h4>
-            <p>Enter your name once and join any active quiz instantly</p>
-          </div>
-          <div className="instruction-card">
-            <h4>🖥️ Fullscreen Mode</h4>
-            <p>Quizzes automatically open in fullscreen for better focus</p>
-          </div>
-          <div className="instruction-card">
-            <h4>⏱️ Auto Progress</h4>
-            <p>Questions automatically advance every few seconds</p>
-          </div>
-          <div className="instruction-card">
-            <h4>📊 Instant Results</h4>
-            <p>See your score immediately after quiz completion</p>
+            )}
           </div>
         </div>
+
+        <div className="portal-content">
+          <div className="info-grid">
+            <div className="info-card">
+              <div className="card-icon">⚡</div>
+              <h4>Instant Access</h4>
+              <p>Join active assessments immediately with your registered name</p>
+            </div>
+            <div className="info-card">
+              <div className="card-icon">🛡️</div>
+              <h4>Secure Environment</h4>
+              <p>Protected testing environment with anti-cheat measures</p>
+            </div>
+            <div className="info-card">
+              <div className="card-icon">📊</div>
+              <h4>Real-time Results</h4>
+              <p>Immediate performance feedback and detailed analytics</p>
+            </div>
+          </div>
+
+          {!activeQuiz && (
+            <div className="no-quiz-message">
+              <div className="message-icon">📚</div>
+              <h3>No Active Quiz</h3>
+              <p>There are no active quizzes at the moment. Please check back later or contact your instructor.</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      <style jsx>{`
+        .student-portal {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #023e8a 0%, #0077b6 100%);
+          padding: 40px 20px;
+        }
+
+        .portal-container {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        .portal-header {
+          text-align: center;
+          margin-bottom: 60px;
+        }
+
+        .brand-section {
+          margin-bottom: 40px;
+        }
+
+        .brand-logo {
+          font-size: 4rem;
+          margin-bottom: 20px;
+        }
+
+        .brand-section h1 {
+          color: white;
+          font-size: 3rem;
+          margin-bottom: 10px;
+          font-weight: 800;
+        }
+
+        .brand-section p {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 1.2rem;
+          margin: 0;
+        }
+
+        .student-info-card {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          padding: 30px;
+          border-radius: 20px;
+          max-width: 400px;
+          margin: 0 auto;
+          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .student-info-card h3 {
+          color: #2c3e50;
+          margin-bottom: 20px;
+          text-align: center;
+        }
+
+        .portal-input {
+          // width: 100%;
+          padding: 15px 20px;
+          border: 2px solid #e9ecef;
+          border-radius: 12px;
+          font-size: 1rem;
+          margin-bottom: 15px;
+          transition: all 0.3s ease;
+        }
+
+        .portal-input:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .welcome-message {
+          text-align: center;
+          color: #28a745;
+          font-weight: 600;
+        }
+
+        .portal-content {
+          margin-top: 40px;
+        }
+
+        .info-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 30px;
+          max-width: 1000px;
+          margin: 0 auto 40px;
+        }
+
+        .info-card {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          padding: 30px;
+          border-radius: 20px;
+          text-align: center;
+          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+          transition: transform 0.3s ease;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .info-card:hover {
+          transform: translateY(-5px);
+        }
+
+        .card-icon {
+          font-size: 3rem;
+          margin-bottom: 20px;
+        }
+
+        .info-card h4 {
+          color: #2c3e50;
+          margin-bottom: 15px;
+          font-size: 1.3rem;
+        }
+
+        .info-card p {
+          color: #6c757d;
+          line-height: 1.6;
+          margin: 0;
+        }
+
+        .no-quiz-message {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          padding: 40px;
+          border-radius: 20px;
+          text-align: center;
+          max-width: 500px;
+          margin: 0 auto;
+          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .message-icon {
+          font-size: 4rem;
+          margin-bottom: 20px;
+        }
+
+        .no-quiz-message h3 {
+          color: #2c3e50;
+          margin-bottom: 15px;
+          font-size: 1.5rem;
+        }
+
+        .no-quiz-message p {
+          color: #6c757d;
+          line-height: 1.6;
+          margin: 0;
+        }
+
+        @media (max-width: 768px) {
+          .brand-section h1 {
+            font-size: 2.2rem;
+          }
+
+          .info-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .student-info-card {
+            margin: 0 20px;
+          }
+
+          .no-quiz-message {
+            margin: 0 20px;
+            padding: 30px 20px;
+          }
+        }
+      `}</style>
     </div>
   );
 };

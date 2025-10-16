@@ -6,8 +6,8 @@ const StudentPage = () => {
     <div className="student-page">
       <div className="container">
         <header className="page-header">
-          <h1>📚 Student Quiz</h1>
-          <p>Test the synchronized quiz experience</p>
+          {/* <h1>📚 Student Quiz</h1>
+          <p>Test the synchronized quiz experience</p> */}
         </header>
         <TestStudentInterface />
       </div>

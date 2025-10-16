@@ -4,6 +4,7 @@ import QuizManager from './QuizManager';
 import LiveMonitor from './LiveMonitor';
 import ResultsManager from './ResultsManager';
 import { useQuiz } from '../../contexts/QuizContext';
+import "./admin.css"
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('create');

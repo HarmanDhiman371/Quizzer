@@ -118,7 +118,7 @@ const HomePage = () => {
       <style jsx>{`
         .homepage {
           min-height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #4a90e2 50%, #357abd 100%);
+          background: linear-gradient(135deg, #03045e 0%, #023e8a 50%, #0077b6 100%);
           display: flex;
           align-items: center;
           justify-content: center;
