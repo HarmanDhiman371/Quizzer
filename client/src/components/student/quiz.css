@@ -1,7 +1,7 @@
 /* Quiz Interface CSS - Mobile Optimized with Fullscreen Support */
 .quiz-interface {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #023e8a 0%, #03045e 100%);
   font-family: 'Inter', 'Segoe UI', sans-serif;
   position: relative;
   overflow-x: hidden;

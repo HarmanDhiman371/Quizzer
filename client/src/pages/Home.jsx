@@ -46,7 +46,7 @@ const HomePage = () => {
         <main className="main-content">
           <div className={`welcome-card ${isVisible ? 'slide-up' : ''}`}>
             <div className="card-header">
-              <h2>Welcome to Quiz Platform</h2>
+              <h2>Welcome to EBI Quiz Platform</h2>
               <p>Join interactive quizzes or manage them as admin</p>
             </div>
             

@@ -504,39 +504,27 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           <p>Excellent effort, {studentName}!</p>
         </div>
 
-        <div className="score-display">
-          <div className="score-circle">
-            <div className="score-value">{score}</div>
-            <div className="score-total">/ {activeQuiz.questions.length}</div>
-          </div>
-          <div className="percentage">{percentage}%</div>
-          <div className="performance-message">{getPerformanceMessage()}</div>
-          {!loading && userRank > 0 && (
-            <div className="rank-badge">
-              {getRankIcon()} {getRankBadge()}
-            </div>
-          )}
-        </div>
+       
 
         <div className="stats-grid">
           <div className="stat-item">
             <span className="stat-label">Your Score</span>
             <span className="stat-value">{score}/{activeQuiz.questions.length}</span>
           </div>
-          <div className="stat-item">
+          {/* <div className="stat-item">
             <span className="stat-label">Accuracy</span>
             <span className="stat-value">{percentage}%</span>
-          </div>
+          </div> */}
           {!loading && userRank > 0 && (
             <div className="stat-item">
               <span className="stat-label">Rank</span>
-              <span className="stat-value">#{userRank} of {allResults.length}</span>
+              {/* <span className="stat-value">#{userRank} of {allResults.length}</span> */}
             </div>
           )}
         </div>
 
         {/* Top 5 Rankings Section */}
-        {!loading && topRankings.length > 0 && (
+        {/* {!loading && topRankings.length > 0 && (
           <div className="top-rankings-section">
             <h3>🏆 Top 5 Performers</h3>
             <div className="rankings-list">
@@ -561,7 +549,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
               ))}
             </div>
           </div>
-        )}
+        )} */}
 
         <div className="quiz-info-card">
           <h3>{activeQuiz.name}</h3>
