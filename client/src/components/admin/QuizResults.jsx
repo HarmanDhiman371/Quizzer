@@ -101,7 +101,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           <div className="score-display">
             <div className="score-circle">
               <div className="score-value">{score}</div>
-              <div className="score-total">/ {totalQuestions > 0 ? totalQuestions : '?'}</div>
+              {/* <div className="score-total">/ {totalQuestions > 0 ? totalQuestions : '?'}</div> */}
             </div>
             {totalQuestions > 0 ? (
               <>
@@ -123,50 +123,22 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
               <span className="stat-label">Your Score</span>
               <span className="stat-value">{score}</span>
             </div>
-            {totalQuestions > 0 && (
+            {/* {totalQuestions > 0 && (
               <div className="stat-item">
                 <span className="stat-label">Accuracy</span>
                 <span className="stat-value">{percentage}%</span>
               </div>
-            )}
+            )} */}
             {!loading && userRank > 0 && (
               <div className="stat-item">
                 <span className="stat-label">Rank</span>
-                <span className="stat-value">#{userRank} of {allResults.length}</span>
+                <span className="stat-value">#{userRank} </span>
               </div>
             )}
           </div>
 
           {/* Top 5 Rankings Section */}
-          {!loading && topRankings.length > 0 && (
-            <div className="top-rankings-section">
-              <h3>🏆 Top 5 Performers</h3>
-              <div className="rankings-list">
-                {topRankings.map((result, index) => (
-                  <div key={result.id || index} className={`ranking-item ${result.studentName === studentName ? 'current-user' : ''}`}>
-                    <span className="rank-position">
-                      {result.rank === 1 ? '🥇' : 
-                       result.rank === 2 ? '🥈' : 
-                       result.rank === 3 ? '🥉' : `#${result.rank}`}
-                    </span>
-                    <span className="student-name">
-                      {result.studentName}
-                      {result.studentName === studentName && ' (You)'}
-                    </span>
-                    <span className="ranking-score">
-                      {result.score}/{totalQuestions > 0 ? totalQuestions : '?'}
-                    </span>
-                    {totalQuestions > 0 && (
-                      <span className="ranking-percentage">
-                        {result.percentage}%
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
+         
           <button onClick={onRetake} className="retake-btn">
             Return to Dashboard
           </button>
@@ -175,7 +147,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
         <style jsx>{`
           .quiz-results {
             min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #023e8a 0%, #03045e 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -509,7 +481,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
         <div className="stats-grid">
           <div className="stat-item">
             <span className="stat-label">Your Score</span>
-            <span className="stat-value">{score}/{activeQuiz.questions.length}</span>
+            <span className="stat-value">{score}</span>
           </div>
           {/* <div className="stat-item">
             <span className="stat-label">Accuracy</span>
@@ -574,7 +546,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
             <div className="achievement-icon">{getRankIcon()}</div>
             <div className="achievement-text">
               <h4>Top Performer!</h4>
-              <p>You ranked #{userRank} out of {allResults.length} participants</p>
+              <p>You ranked #{userRank} </p>
             </div>
           </div>
         )}
