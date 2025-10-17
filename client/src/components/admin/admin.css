@@ -2300,3 +2300,28 @@
     display: none;
   }
 }
+/* Add to your CSS */
+.time-display.activated {
+  color: #ffc107;
+  font-weight: 600;
+}
+
+.time-display.ready {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.upcoming-badge.activated {
+  background: linear-gradient(135deg, #ffc107, #ffca28);
+  color: #856404;
+}
+
+.quiz-scheduled-time {
+  background: rgba(108, 117, 125, 0.1);
+  padding: 10px 15px;
+  border-radius: 8px;
+  color: #6c757d;
+  font-size: 0.85rem;
+  margin-bottom: 15px;
+  text-align: center;
+}

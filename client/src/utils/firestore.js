@@ -132,7 +132,7 @@ export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
     if (!activeQuizDoc.exists() || activeQuizDoc.data().status === 'inactive') {
       console.log('🆕 Creating new waiting room from scheduled quiz');
       
-      // FIX: Ensure quiz has valid questions before activating
+      // Only check if quiz has valid questions
       if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
         throw new Error('Quiz has no valid questions');
       }
@@ -161,6 +161,12 @@ export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
       // Add student to existing waiting room
       console.log('➕ Adding student to existing waiting room');
       const currentData = activeQuizDoc.data();
+      
+      // Check if quiz is already active
+      if (currentData.status === 'active') {
+        throw new Error('Quiz has already started. Cannot join now.');
+      }
+      
       const currentParticipants = currentData.waitingParticipants || [];
       
       if (!currentParticipants.includes(studentName)) {
@@ -637,31 +643,11 @@ export const getClassResults = async () => {
     throw error;
   }
 };
-
-// Get all class results including completed ones
-export const getAllClassResults = async () => {
-  try {
-    const q = query(
-      collection(db, CLASS_RESULTS_COLLECTION),
-      orderBy('completedAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const classResults = [];
-    querySnapshot.forEach((doc) => {
-      classResults.push({ id: doc.id, ...doc.data() });
-    });
-    return classResults;
-  } catch (error) {
-    console.error('Error getting class results:', error);
-    throw error;
-  }
-};
 export const getAllScheduledQuizzes = async () => {
   try {
     const q = query(
       collection(db, QUIZZES_COLLECTION),
-      where('status', 'in', ['scheduled', 'activated']), // Include activated but not started
+      where('status', 'in', ['scheduled', 'activated']),
       orderBy('scheduledTime', 'asc')
     );
     
@@ -682,16 +668,34 @@ export const getAllScheduledQuizzes = async () => {
     return [];
   }
 };
+// Get all class results including completed ones
+export const getAllClassResults = async () => {
+  try {
+    const q = query(
+      collection(db, CLASS_RESULTS_COLLECTION),
+      orderBy('completedAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const classResults = [];
+    querySnapshot.forEach((doc) => {
+      classResults.push({ id: doc.id, ...doc.data() });
+    });
+    return classResults;
+  } catch (error) {
+    console.error('Error getting class results:', error);
+    throw error;
+  }
+};
+
 // Get scheduled quizzes for students
 // Enhanced getScheduledQuizzes with better error handling
 export const getScheduledQuizzes = async () => {
   try {
-    const now = Date.now();
-    
-    // FIX: Use simpler query to avoid Firestore errors
+    // SIMPLE query - no time filtering
     const q = query(
       collection(db, QUIZZES_COLLECTION),
-      where('status', '==', 'scheduled'),
+      where('status', 'in', ['scheduled', 'activated']),
       orderBy('scheduledTime', 'asc')
     );
     
@@ -699,21 +703,16 @@ export const getScheduledQuizzes = async () => {
     const quizzes = [];
     
     querySnapshot.forEach((doc) => {
-      const quizData = doc.data();
-      // FIX: Filter by time on client side to avoid complex queries
-      if (quizData.scheduledTime && quizData.scheduledTime > now) {
-        quizzes.push({ 
-          id: doc.id, 
-          ...quizData
-        });
-      }
+      quizzes.push({ 
+        id: doc.id, 
+        ...doc.data()
+      });
     });
     
-    console.log(`📅 Found ${quizzes.length} scheduled quizzes`);
+    console.log(`📅 Found ${quizzes.length} scheduled/activated quizzes`);
     return quizzes;
   } catch (error) {
     console.error('Error getting scheduled quizzes:', error);
-    // Return empty array to prevent UI crashes
     return [];
   }
 };
