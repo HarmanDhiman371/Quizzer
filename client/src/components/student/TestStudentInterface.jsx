@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
 import QuizInterface from './QuizInterface';
 import WaitingRoom from './WaitingRoom';
-import QuizResults from '../admin/QuizResults';
+import CompleteResults from '../admin/CompleteResults';
 import { saveOrUpdateQuizResult, getAllScheduledQuizzes, joinScheduledQuizWaitingRoom } from '../../utils/firestore';
 
 const StudentQuiz = () => {
@@ -13,11 +14,10 @@ const StudentQuiz = () => {
   const [finalScore, setFinalScore] = useState(null);
   const [scheduledQuizzes, setScheduledQuizzes] = useState([]);
   const [inWaitingRoom, setInWaitingRoom] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadingScheduled, setLoadingScheduled] = useState(true);
   const [joiningQuiz, setJoiningQuiz] = useState(null);
 
-  // FIXED: Fetch ALL scheduled quizzes (including activated ones)
+  // Fetch ALL scheduled quizzes
   useEffect(() => {
     const loadScheduledQuizzes = async () => {
       try {
@@ -26,18 +26,18 @@ const StudentQuiz = () => {
         setScheduledQuizzes(quizzes);
       } catch (error) {
         console.error('Error loading scheduled quizzes:', error);
-        setScheduledQuizzes([]); // Ensure empty array on error
+        setScheduledQuizzes([]);
       } finally {
         setLoadingScheduled(false);
       }
     };
 
     loadScheduledQuizzes();
-    const interval = setInterval(loadScheduledQuizzes, 10000); // Refresh every 10 seconds
+    const interval = setInterval(loadScheduledQuizzes, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // FIXED: Handle quiz state transitions
+  // Handle quiz state transitions
   useEffect(() => {
     if (!activeQuiz || !studentName.trim()) return;
 
@@ -49,7 +49,6 @@ const StudentQuiz = () => {
       console.log('🎬 Auto-starting quiz from waiting room');
       setQuizStarted(true);
       setInWaitingRoom(false);
-      enterFullscreen();
     }
 
     // If quiz ends, reset everything
@@ -57,48 +56,21 @@ const StudentQuiz = () => {
       console.log('🛑 Quiz ended');
       setQuizStarted(false);
       setInWaitingRoom(false);
-      exitFullscreen();
     }
   }, [activeQuiz, studentName, inWaitingRoom, quizStarted]);
 
-  // Fullscreen functions
-  const enterFullscreen = async () => {
-    try {
-      const element = document.documentElement;
-      if (element.requestFullscreen) {
-        await element.requestFullscreen();
-      }
-      setIsFullscreen(true);
-    } catch (error) {
-      console.log('Fullscreen not supported:', error);
-    }
-  };
-
-  const exitFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      }
-      setIsFullscreen(false);
-    } catch (error) {
-      console.log('Exit fullscreen error:', error);
-    }
-  };
-
-  // FIXED: Enhanced quiz validation
+  // Enhanced quiz validation
   const validateQuizData = (quiz) => {
     if (!quiz) {
       console.error('No quiz data provided');
       return false;
     }
 
-    // SIMPLE check - just verify questions array exists and has items
     if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
       console.error('Invalid or empty questions array');
       return false;
     }
 
-    // Basic check that questions have the required fields
     const hasValidQuestions = quiz.questions.every(q =>
       q &&
       typeof q === 'object' &&
@@ -118,7 +90,7 @@ const StudentQuiz = () => {
     return true;
   };
 
-  // FIXED: Handle joining scheduled quiz
+  // Handle joining scheduled quiz
   const handleJoinScheduledQuiz = async (quiz) => {
     if (!studentName.trim()) {
       alert('Please enter your name first.');
@@ -135,11 +107,13 @@ const StudentQuiz = () => {
     try {
       localStorage.setItem('studentName', studentName.trim());
 
-      const result = await joinScheduledQuizWaitingRoom(quiz.id, studentName.trim());
-
-      if (result.success) {
-        console.log('✅ Joined waiting room for scheduled quiz');
-        setInWaitingRoom(true);
+      if (quiz.status === 'activated' || quiz.status === 'scheduled') {
+        // Join waiting room
+        const result = await joinScheduledQuizWaitingRoom(quiz.id, studentName.trim());
+        if (result.success) {
+          console.log('✅ Joined waiting room for scheduled quiz');
+          setInWaitingRoom(true);
+        }
       }
     } catch (error) {
       console.error('Error joining scheduled quiz:', error);
@@ -147,6 +121,22 @@ const StudentQuiz = () => {
     } finally {
       setJoiningQuiz(null);
     }
+  };
+
+  // Handle joining active quiz directly
+  const handleJoinActiveQuiz = () => {
+    if (!studentName.trim()) {
+      alert('Please enter your name first.');
+      return;
+    }
+
+    if (!validateQuizData(activeQuiz)) {
+      alert('This quiz has configuration issues. Please contact your instructor.');
+      return;
+    }
+
+    localStorage.setItem('studentName', studentName.trim());
+    setQuizStarted(true);
   };
 
   const handleQuizComplete = async (score) => {
@@ -176,8 +166,6 @@ const StudentQuiz = () => {
       }
     } catch (error) {
       console.error('❌ Error saving result:', error);
-    } finally {
-      await exitFullscreen();
     }
   };
 
@@ -186,21 +174,21 @@ const StudentQuiz = () => {
     setFinalScore(null);
   };
 
-  // FIXED: Check if quiz is ready to join - STATUS BASED ONLY (NO TIME CHECKS)
+  // Check if quiz is ready to join
   const isQuizReadyToJoin = (quiz) => {
     const isScheduledOrActivated = quiz.status === 'scheduled' || quiz.status === 'activated';
     const noActiveQuiz = !activeQuiz || activeQuiz.status === 'inactive';
     const isValidQuiz = validateQuizData(quiz);
-    
+
     return isScheduledOrActivated && noActiveQuiz && isValidQuiz;
   };
 
-  // FIXED: Check if quiz is activated but waiting
+  // Check if quiz is activated but waiting
   const isQuizActivated = (quiz) => {
     return quiz.status === 'activated';
   };
 
-  // FIXED: Get time display - NO COUNTDOWNS, just schedule info
+  // Get time display
   const getTimeDisplay = (quiz) => {
     if (quiz.status === 'activated') {
       return 'Waiting for admin to start';
@@ -210,7 +198,7 @@ const StudentQuiz = () => {
     return 'Ready to join';
   };
 
-  // FIXED: Get quiz status for display - NO TIME CHECKS
+  // Get quiz status for display
   const getQuizStatus = (quiz) => {
     if (isQuizActivated(quiz)) {
       return 'activated';
@@ -230,21 +218,22 @@ const StudentQuiz = () => {
     );
   }
 
-  // FIXED: Render logic
+  // Render logic
   if (inWaitingRoom && activeQuiz) {
     return <WaitingRoom activeQuiz={activeQuiz} studentName={studentName} />;
   }
 
-  if (quizCompleted && activeQuiz) {
-    return (
-      <QuizResults
-        score={finalScore}
-        activeQuiz={activeQuiz}
-        studentName={studentName}
-        onRetake={handleRetakeQuiz}
-      />
-    );
-  }
+  // In StudentQuiz.js - Replace the quizCompleted section
+if (quizCompleted && activeQuiz) {
+  return (
+    <CompleteResults
+      score={finalScore}
+      activeQuiz={activeQuiz}
+      studentName={studentName}
+      onRetake={handleRetakeQuiz}
+    />
+  );
+}
 
   if (quizStarted && activeQuiz) {
     return (
@@ -258,16 +247,52 @@ const StudentQuiz = () => {
     );
   }
 
-  // Show active quiz lobby (only for non-scheduled quizzes)
-  if (activeQuiz && activeQuiz.status === 'active' && !activeQuiz.isFromScheduled) {
+  // Show active quiz join option
+  if (activeQuiz && activeQuiz.status === 'active') {
     return (
-      <div className="quiz-lobby">
-        {/* ... (keep your existing active quiz lobby code) ... */}
+      <div className="student-portal">
+        <div className="portal-container">
+          <div className="active-quiz-banner">
+            <div className="banner-icon">🎯</div>
+            <div className="banner-content">
+              <h2>Active Quiz Running!</h2>
+              <p><strong>{activeQuiz.name}</strong> is currently active. You can join now.</p>
+              <div className="quiz-details">
+                <span>🏫 {activeQuiz.class}</span>
+                <span>📝 {activeQuiz.questions?.length || 0} Questions</span>
+                <span>⏱️ {activeQuiz.timePerQuestion}s per question</span>
+              </div>
+            </div>
+            <button
+              className="join-active-btn"
+              onClick={handleJoinActiveQuiz}
+            >
+              🚀 Join Active Quiz
+            </button>
+          </div>
+
+          <div className="student-info-section">
+            <h3>Enter Your Name to Join</h3>
+            <input
+              type="text"
+              placeholder="Enter your full name"
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              className="portal-input"
+              maxLength={50}
+            />
+            {studentName.trim() && (
+              <div className="welcome-message">
+                Welcome, <strong>{studentName}</strong>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
 
-  // FIXED: Show portal with ALL scheduled quizzes - they NEVER disappear
+  // Show portal with scheduled quizzes
   return (
     <div className="student-portal">
       <div className="portal-container">
@@ -297,7 +322,7 @@ const StudentQuiz = () => {
         </div>
 
         <div className="portal-content">
-          {/* Quiz Portal Section - ALWAYS VISIBLE */}
+          {/* Quiz Portal Section */}
           <div className="upcoming-quizzes-section">
             <div className="section-header">
               <h2>📅 Quiz Portal</h2>
@@ -402,15 +427,6 @@ const StudentQuiz = () => {
             )}
           </div>
 
-          {/* Show active quiz info if there is one */}
-          {activeQuiz && activeQuiz.status === 'active' && (
-            <div className="active-quiz-notice">
-              <div className="notice-icon">🎯</div>
-              <h3>Active Quiz Running</h3>
-              <p>There's an active quiz running. Check the quiz lobby to join.</p>
-            </div>
-          )}
-
           <div className="info-grid">
             <div className="info-card">
               <div className="card-icon">⚡</div>
@@ -443,6 +459,79 @@ const StudentQuiz = () => {
           margin: 0 auto;
         }
 
+        .active-quiz-banner {
+          background: linear-gradient(135deg, #28a745, #20c997);
+          color: white;
+          padding: 30px;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 30px;
+          box-shadow: 0 15px 35px rgba(40, 167, 69, 0.3);
+        }
+
+        .banner-icon {
+          font-size: 3rem;
+          margin-right: 20px;
+        }
+
+        .banner-content {
+          flex: 1;
+        }
+
+        .banner-content h2 {
+          margin: 0 0 10px 0;
+          font-size: 1.8rem;
+        }
+
+        .banner-content p {
+          margin: 0 0 15px 0;
+          opacity: 0.9;
+        }
+
+        .quiz-details {
+          display: flex;
+          gap: 15px;
+          flex-wrap: wrap;
+        }
+
+        .quiz-details span {
+          background: rgba(255, 255, 255, 0.2);
+          padding: 5px 12px;
+          border-radius: 15px;
+          font-size: 0.9rem;
+        }
+
+        .join-active-btn {
+          background: white;
+          color: #28a745;
+          border: none;
+          padding: 12px 25px;
+          border-radius: 10px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .join-active-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .student-info-section {
+          background: rgba(255, 255, 255, 0.95);
+          padding: 25px;
+          border-radius: 15px;
+          margin-bottom: 30px;
+        }
+
+        .student-info-section h3 {
+          color: #2c3e50;
+          margin-bottom: 15px;
+        }
+
+        /* Rest of the CSS remains the same as previous version */
         .portal-header {
           text-align: center;
           margin-bottom: 60px;
@@ -487,7 +576,7 @@ const StudentQuiz = () => {
         }
 
         .portal-input {
-          // width: 100%;
+          width: 100%;
           padding: 15px 20px;
           border: 2px solid #e9ecef;
           border-radius: 12px;
@@ -512,7 +601,7 @@ const StudentQuiz = () => {
           margin-top: 40px;
         }
 
-        /* Upcoming Quizzes Styles */
+        /* ... rest of the existing CSS ... */
         .upcoming-quizzes-section {
           margin-bottom: 60px;
         }
@@ -886,7 +975,281 @@ const StudentQuiz = () => {
           .quiz-card-header h4 {
             margin-right: 0;
           }
-        }
+      }
+          // Add this CSS to the existing StudentQuiz.js styles
+
+.active-quiz-banner {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  padding: 30px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+  box-shadow: 0 15px 35px rgba(40, 167, 69, 0.3);
+  animation: slideIn 0.6s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-icon {
+  font-size: 3rem;
+  margin-right: 20px;
+  animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.banner-content {
+  flex: 1;
+}
+
+.banner-content h2 {
+  margin: 0 0 10px 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.banner-content p {
+  margin: 0 0 15px 0;
+  opacity: 0.9;
+  font-size: 1.1rem;
+}
+
+.quiz-details {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.quiz-details span {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 15px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.join-active-btn {
+  background: white;
+  color: #28a745;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+}
+
+.join-active-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3);
+}
+
+.student-info-section {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 25px;
+  border-radius: 15px;
+  margin-bottom: 30px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.student-info-section h3 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 1.3rem;
+}
+
+.student-info-section .portal-input {
+  width: 100%;
+  padding: 15px 20px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1rem;
+  margin-bottom: 15px;
+  transition: all 0.3s ease;
+}
+
+.student-info-section .portal-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.student-info-section .welcome-message {
+  text-align: center;
+  color: #28a745;
+  font-weight: 600;
+  font-size: 1rem;
+}
+  // Add this to the StudentQuiz.js styles section
+.active-quiz-section {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #023e8a 0%, #0077b6 100%);
+  padding: 40px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.active-quiz-container {
+  max-width: 600px;
+  width: 100%;
+}
+
+.active-quiz-banner {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  margin-bottom: 30px;
+  animation: slideIn 0.6s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.banner-content h2 {
+  color: #2c3e50;
+  margin-bottom: 15px;
+  font-size: 2.2rem;
+  font-weight: 700;
+}
+
+.banner-content p {
+  color: #6c757d;
+  margin-bottom: 20px;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+.quiz-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin: 25px 0;
+}
+
+.quiz-detail-item {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.detail-value {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.detail-label {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.join-active-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  padding: 16px 40px;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+  width: 100%;
+  margin-top: 20px;
+}
+
+.join-active-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 35px rgba(40, 167, 69, 0.4);
+}
+
+.student-info-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.student-info-card h3 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 1.3rem;
+}
+
+.name-input {
+  width: 100%;
+  padding: 15px 20px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1rem;
+  margin-bottom: 15px;
+  transition: all 0.3s ease;
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.welcome-text {
+  text-align: center;
+  color: #28a745;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-top: 10px;
+}
       `}</style>
     </div>
   );

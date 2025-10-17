@@ -15,7 +15,35 @@ const ResultsManager = () => {
     try {
       setLoading(true);
       const results = await getAllClassResults();
-      setClassResults(results);
+      
+      // Filter out duplicate results (same quizId and quizName)
+      const uniqueResults = results.reduce((acc, current) => {
+        const existing = acc.find(item => 
+          item.quizId === current.quizId && 
+          item.quizName === current.quizName
+        );
+        if (!existing) {
+          acc.push(current);
+        } else {
+          // Keep the most recent result if duplicates exist
+          const existingDate = existing.completedAt?.toDate?.() || new Date(0);
+          const currentDate = current.completedAt?.toDate?.() || new Date(0);
+          if (currentDate > existingDate) {
+            const index = acc.indexOf(existing);
+            acc[index] = current;
+          }
+        }
+        return acc;
+      }, []);
+      
+      // Sort by completion date (newest first)
+      uniqueResults.sort((a, b) => {
+        const dateA = a.completedAt?.toDate?.() || new Date(0);
+        const dateB = b.completedAt?.toDate?.() || new Date(0);
+        return dateB - dateA;
+      });
+      
+      setClassResults(uniqueResults);
     } catch (error) {
       console.error('Error loading class results:', error);
     } finally {
@@ -111,14 +139,19 @@ const ResultsManager = () => {
                 <p className="participants-count">
                   Participants: {result.totalParticipants || 0}
                 </p>
+                {result.quizId && (
+                  <p className="quiz-id">
+                    Quiz ID: {result.quizId.substring(0, 8)}...
+                  </p>
+                )}
               </div>
 
-              {result.topRankings && result.topRankings.length > 0 && (
+              {result.topRankings && result.topRankings.length > 0 ? (
                 <div className="top-rankings-section">
                   <h5>🏅 Top 5 Performers</h5>
                   <div className="rankings-list">
                     {result.topRankings.map((ranking, index) => (
-                      <div key={index} className="ranking-item">
+                      <div key={`${result.id}-${index}`} className="ranking-item">
                         <span className="rank-position">
                           {index === 0 ? '🥇' : 
                            index === 1 ? '🥈' : 
@@ -135,9 +168,7 @@ const ResultsManager = () => {
                     ))}
                   </div>
                 </div>
-              )}
-
-              {(!result.topRankings || result.topRankings.length === 0) && (
+              ) : (
                 <div className="no-rankings">
                   <p>No rankings available for this quiz.</p>
                 </div>
@@ -177,6 +208,7 @@ const ResultsManager = () => {
           border: 1px solid #ddd;
           border-radius: 6px;
           background: white;
+          font-size: 0.9rem;
         }
 
         .class-results-grid {
@@ -226,10 +258,18 @@ const ResultsManager = () => {
           border-bottom: 1px solid #e9ecef;
         }
 
-        .completion-date, .participants-count {
+        .completion-date, .participants-count, .quiz-id {
           color: #6c757d;
           margin: 5px 0;
           font-size: 0.9rem;
+        }
+
+        .quiz-id {
+          font-family: monospace;
+          background: #f8f9fa;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.8rem;
         }
 
         .top-rankings-section h5 {
@@ -327,6 +367,44 @@ const ResultsManager = () => {
           100% { transform: rotate(360deg); }
         }
 
+        .btn {
+          padding: 8px 16px;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          font-weight: 600;
+          transition: all 0.3s ease;
+        }
+
+        .btn-secondary {
+          background: #6c757d;
+          color: white;
+        }
+
+        .btn-secondary:hover {
+          background: #5a6268;
+        }
+
+        .btn-danger {
+          background: #dc3545;
+          color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+          background: #c82333;
+        }
+
+        .btn-danger:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .btn-sm {
+          padding: 6px 12px;
+          font-size: 0.8rem;
+        }
+
         @media (max-width: 768px) {
           .results-header {
             flex-direction: column;
@@ -344,6 +422,37 @@ const ResultsManager = () => {
           .result-header {
             flex-direction: column;
             gap: 10px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .class-result-card {
+            padding: 20px;
+          }
+
+          .ranking-item {
+            flex-wrap: wrap;
+            gap: 5px;
+          }
+
+          .student-name {
+            min-width: 120px;
+            order: 2;
+            flex-basis: 100%;
+            text-align: center;
+            padding: 5px 0 0 0;
+          }
+
+          .rank-position {
+            order: 1;
+          }
+
+          .score-badge {
+            order: 3;
+          }
+
+          .percentage-badge {
+            order: 4;
           }
         }
       `}</style>

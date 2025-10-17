@@ -209,7 +209,7 @@ export const setActiveQuiz = async (quiz) => {
     const activeQuizData = {
       ...quiz,
       originalQuizId: quiz.id,
-      quizStartTime: null, // ← CHANGE THIS: Remove auto-start timer
+      quizStartTime: null, // No auto-start timer
       currentQuestionIndex: 0,
       totalParticipants: 0,
       waitingParticipants: quiz.waitingParticipants || [],
@@ -410,13 +410,16 @@ export const startQuizFromWaitingRoom = async () => {
     const activeQuizDoc = await getDoc(activeQuizRef);
     
     if (activeQuizDoc.exists()) {
+      const currentData = activeQuizDoc.data();
+      
+      // Move waiting participants to active quiz
       await updateDoc(activeQuizRef, {
         status: 'active',
         quizStartTime: Date.now(), // Start now
         lastUpdated: serverTimestamp()
       });
       
-      console.log('🚀 Quiz started from waiting room');
+      console.log('🚀 Quiz started from waiting room with participants:', currentData.waitingParticipants?.length || 0);
       return true;
     }
     return false;
@@ -488,18 +491,27 @@ const cleanAnswersArray = (answers) => {
 };
 
 // Save or update quiz result
+// Enhanced saveOrUpdateQuizResult to prevent multiple saves
 export const saveOrUpdateQuizResult = async (result) => {
   try {
     // Clean the answers array before saving
     const cleanedResult = {
       ...result,
-      answers: cleanAnswersArray(result.answers)
+      answers: cleanAnswersArray(result.answers),
+      tabSwitches: result.tabSwitches || 0,
+      lastActivity: serverTimestamp()
     };
 
     const existingResult = await getStudentResult(cleanedResult.quizId, cleanedResult.studentName);
     
     if (existingResult) {
-      // Update existing result
+      // If result already exists and is completed, don't update
+      if (existingResult.completedAt) {
+        console.log('✅ Result already completed, skipping update for:', cleanedResult.studentName);
+        return { id: existingResult.id, ...existingResult };
+      }
+      
+      // Update existing result only if it's not completed
       const resultRef = doc(db, RESULTS_COLLECTION, existingResult.id);
       await updateDoc(resultRef, {
         score: cleanedResult.score,
@@ -507,7 +519,9 @@ export const saveOrUpdateQuizResult = async (result) => {
         answers: cleanedResult.answers,
         updatedAt: serverTimestamp(),
         completedAt: cleanedResult.completedAt || existingResult.completedAt,
-        lastQuestionAnswered: cleanedResult.currentQuestionIndex || existingResult.lastQuestionAnswered
+        lastQuestionAnswered: cleanedResult.currentQuestionIndex || existingResult.lastQuestionAnswered,
+        tabSwitches: cleanedResult.tabSwitches,
+        lastActivity: cleanedResult.lastActivity
       });
       console.log('✅ Updated existing result for:', cleanedResult.studentName);
       return { id: existingResult.id, ...cleanedResult };
@@ -562,7 +576,6 @@ export const getQuizResultsFromFirestore = async (quizId) => {
     const q = query(
       collection(db, RESULTS_COLLECTION), 
       where('quizId', '==', quizId)
-      // Remove orderBy if it causes issues, we'll sort manually
     );
     
     const querySnapshot = await getDocs(q);
@@ -574,7 +587,8 @@ export const getQuizResultsFromFirestore = async (quizId) => {
         ...data,
         // Ensure score is a number
         score: Number(data.score) || 0,
-        percentage: Number(data.percentage) || 0
+        percentage: Number(data.percentage) || 0,
+        tabSwitches: data.tabSwitches || 0
       });
     });
     
@@ -590,19 +604,25 @@ export const getQuizResultsFromFirestore = async (quizId) => {
 export const listenToQuizResults = (quizId, callback) => {
   const q = query(
     collection(db, RESULTS_COLLECTION), 
-    where('quizId', '==', quizId),
-    orderBy('score', 'desc')
+    where('quizId', '==', quizId)
   );
   
   return onSnapshot(q, (querySnapshot) => {
     const results = [];
     querySnapshot.forEach((doc) => {
-      results.push({ id: doc.id, ...doc.data() });
+      const data = doc.data();
+      results.push({ 
+        id: doc.id, 
+        ...data,
+        tabSwitches: data.tabSwitches || 0
+      });
     });
+    
+    // Sort by score descending
+    results.sort((a, b) => (b.score || 0) - (a.score || 0));
     callback(results);
   });
 };
-
 // Get all scheduled quizzes
 export const getQuizzesFromFirestore = async () => {
   try {
@@ -775,5 +795,22 @@ export const calculateRankings = async (quizId, studentId, score, timestamp) => 
   } catch (error) {
     console.error('❌ Error calculating rankings:', error);
     throw error;
+  }
+};
+export const updateTabSwitchCount = async (quizId, studentName, switchCount) => {
+  try {
+    const existingResult = await getStudentResult(quizId, studentName);
+    
+    if (existingResult) {
+      const resultRef = doc(db, RESULTS_COLLECTION, existingResult.id);
+      await updateDoc(resultRef, {
+        tabSwitches: switchCount,
+        lastActivity: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      console.log('🔄 Updated tab switch count for:', studentName, switchCount);
+    }
+  } catch (error) {
+    console.error('Error updating tab switch count:', error);
   }
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { updateCurrentQuestion, endActiveQuiz, startQuizFromWaitingRoom } from '../utils/firestore';
+import { updateCurrentQuestion, endActiveQuiz } from '../utils/firestore';
 
 export const useQuizSync = (activeQuiz) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -28,12 +28,11 @@ export const useQuizSync = (activeQuiz) => {
       return 0;
     }
 
-    // Handle paused state
     if (activeQuiz.status === 'paused') {
       return activeQuiz.currentQuestionIndex || 0;
     }
 
-    if (activeQuiz.status === 'waiting' || Date.now() < activeQuiz.quizStartTime) {
+    if (activeQuiz.status === 'waiting' || activeQuiz.status === 'inactive') {
       return 0;
     }
 
@@ -56,9 +55,8 @@ export const useQuizSync = (activeQuiz) => {
       return activeQuiz.timePerQuestion || 30;
     }
 
-    if (activeQuiz.status === 'waiting') {
-      const timeUntilStart = activeQuiz.quizStartTime - Date.now();
-      return Math.max(0, Math.floor(timeUntilStart / 1000));
+    if (activeQuiz.status === 'waiting' || activeQuiz.status === 'inactive') {
+      return activeQuiz.timePerQuestion || 30;
     }
 
     const now = Date.now();
@@ -104,9 +102,6 @@ export const useQuizSync = (activeQuiz) => {
       // Handle different statuses
       if (activeQuiz.status === 'waiting') {
         setQuizStatus('waiting');
-        if (Date.now() >= activeQuiz.quizStartTime) {
-          startQuizFromWaitingRoom();
-        }
       } else if (activeQuiz.status === 'paused') {
         setQuizStatus('paused');
       } else if (ended || activeQuiz.status === 'inactive') {
@@ -130,7 +125,7 @@ export const useQuizSync = (activeQuiz) => {
       }
     };
 
-    intervalRef.current = setInterval(updateQuizState, 1000);
+    intervalRef.current = setInterval(updateQuizState, 500);
     updateQuizState();
 
     return () => {

@@ -7,6 +7,10 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
   const [loading, setLoading] = useState(true);
   const [topRankings, setTopRankings] = useState([]);
 
+  // Safe handling of undefined activeQuiz
+  const totalQuestions = activeQuiz?.questions?.length || 0;
+  const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+  
   // Calculate user rank from all participants
   useEffect(() => {
     const calculateRank = async () => {
@@ -38,8 +42,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           setUserRank(userIndex + 1);
         }
 
-        // Get top 5 rankings
-        const totalQuestions = activeQuiz.questions?.length || 0;
+        // Get top 5 rankings - use safe totalQuestions
         const top5 = sortedResults.slice(0, 5).map((result, index) => ({
           ...result,
           rank: index + 1,
@@ -56,12 +59,8 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
     };
 
     calculateRank();
-  }, [activeQuiz?.id, studentName, activeQuiz?.questions?.length]);
+  }, [activeQuiz?.id, studentName, totalQuestions]); // Added totalQuestions to dependencies
 
-  // Safe handling of undefined activeQuiz with proper fallback
-  const totalQuestions = activeQuiz?.questions?.length || 0;
-  const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
-  
   const getPerformanceMessage = () => {
     if (totalQuestions === 0) return "Assessment Complete! 📝";
     if (percentage >= 90) return "Outstanding Performance! 🎉";
@@ -101,16 +100,8 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           <div className="score-display">
             <div className="score-circle">
               <div className="score-value">{score}</div>
-              {/* <div className="score-total">/ {totalQuestions > 0 ? totalQuestions : '?'}</div> */}
             </div>
-            {totalQuestions > 0 ? (
-              <>
-                <div className="percentage">{percentage}%</div>
-                <div className="performance-message">{getPerformanceMessage()}</div>
-              </>
-            ) : (
-              <div className="performance-message">Score: {score}</div>
-            )}
+            <div className="performance-message">{getPerformanceMessage()}</div>
             {!loading && userRank > 0 && (
               <div className="rank-badge">
                 {getRankIcon()} {getRankBadge()}
@@ -123,22 +114,14 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
               <span className="stat-label">Your Score</span>
               <span className="stat-value">{score}</span>
             </div>
-            {/* {totalQuestions > 0 && (
-              <div className="stat-item">
-                <span className="stat-label">Accuracy</span>
-                <span className="stat-value">{percentage}%</span>
-              </div>
-            )} */}
             {!loading && userRank > 0 && (
               <div className="stat-item">
                 <span className="stat-label">Rank</span>
-                <span className="stat-value">#{userRank} </span>
+                <span className="stat-value">#{userRank}</span>
               </div>
             )}
           </div>
 
-          {/* Top 5 Rankings Section */}
-         
           <button onClick={onRetake} className="retake-btn">
             Return to Dashboard
           </button>
@@ -235,18 +218,6 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
             line-height: 1;
           }
 
-          .score-total {
-            font-size: 1rem;
-            opacity: 0.9;
-          }
-
-          .percentage {
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: #2c3e50;
-            margin-bottom: 8px;
-          }
-
           .performance-message {
             font-size: 1.2rem;
             color: #667eea;
@@ -267,7 +238,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
 
           .stats-grid {
             display: grid;
-            grid-template-columns: ${totalQuestions > 0 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'};
+            grid-template-columns: repeat(2, 1fr);
             gap: 12px;
             margin: 25px 0;
           }
@@ -292,75 +263,6 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
             color: #2c3e50;
             font-weight: 700;
             font-size: 1.1rem;
-          }
-
-          .top-rankings-section {
-            margin: 25px 0;
-            text-align: left;
-          }
-
-          .top-rankings-section h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            text-align: center;
-            font-size: 1.2rem;
-          }
-
-          .rankings-list {
-            space-y: 8px;
-          }
-
-          .ranking-item {
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            transition: all 0.3s ease;
-            border-left: 4px solid transparent;
-          }
-
-          .ranking-item.current-user {
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-            border-left-color: #2196f3;
-            font-weight: 600;
-          }
-
-          .ranking-item:hover {
-            transform: translateX(5px);
-            background: #e9ecef;
-          }
-
-          .rank-position {
-            width: 40px;
-            font-weight: bold;
-            font-size: 0.9rem;
-            text-align: center;
-            color: #2c3e50;
-          }
-
-          .student-name {
-            flex: 1;
-            color: #2c3e50;
-            font-size: 0.9rem;
-            padding: 0 10px;
-          }
-
-          .ranking-score {
-            width: 70px;
-            text-align: center;
-            font-weight: 600;
-            color: #495057;
-            font-size: 0.85rem;
-          }
-
-          .ranking-percentage {
-            width: 50px;
-            text-align: center;
-            color: #28a745;
-            font-weight: 600;
-            font-size: 0.85rem;
           }
 
           .retake-btn {
@@ -409,57 +311,6 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
               grid-template-columns: 1fr;
               gap: 8px;
             }
-
-            .ranking-item {
-              padding: 10px 12px;
-              font-size: 0.85rem;
-            }
-
-            .rank-position {
-              width: 35px;
-              font-size: 0.8rem;
-            }
-
-            .ranking-score {
-              width: 60px;
-              font-size: 0.8rem;
-            }
-
-            .ranking-percentage {
-              width: 45px;
-              font-size: 0.8rem;
-            }
-          }
-
-          @media (max-width: 380px) {
-            .results-container {
-              padding: 25px 15px;
-            }
-
-            .ranking-item {
-              flex-wrap: wrap;
-              gap: 5px;
-            }
-
-            .student-name {
-              min-width: 120px;
-              order: 2;
-              flex-basis: 100%;
-              text-align: center;
-              padding: 5px 0 0 0;
-            }
-
-            .rank-position {
-              order: 1;
-            }
-
-            .ranking-score {
-              order: 3;
-            }
-
-            .ranking-percentage {
-              order: 4;
-            }
           }
         `}</style>
       </div>
@@ -476,27 +327,39 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           <p>Excellent effort, {studentName}!</p>
         </div>
 
-       
+        <div className="score-display">
+          <div className="score-circle">
+            <div className="score-value">{score}</div>
+            <div className="score-total">/ {totalQuestions}</div>
+          </div>
+          <div className="percentage">{percentage}%</div>
+          <div className="performance-message">{getPerformanceMessage()}</div>
+          {!loading && userRank > 0 && (
+            <div className="rank-badge">
+              {getRankIcon()} {getRankBadge()}
+            </div>
+          )}
+        </div>
 
         <div className="stats-grid">
           <div className="stat-item">
             <span className="stat-label">Your Score</span>
-            <span className="stat-value">{score}</span>
+            <span className="stat-value">{score}/{totalQuestions}</span>
           </div>
-          {/* <div className="stat-item">
+          <div className="stat-item">
             <span className="stat-label">Accuracy</span>
             <span className="stat-value">{percentage}%</span>
-          </div> */}
+          </div>
           {!loading && userRank > 0 && (
             <div className="stat-item">
               <span className="stat-label">Rank</span>
-              {/* <span className="stat-value">#{userRank} of {allResults.length}</span> */}
+              <span className="stat-value">#{userRank} of {allResults.length}</span>
             </div>
           )}
         </div>
 
         {/* Top 5 Rankings Section */}
-        {/* {!loading && topRankings.length > 0 && (
+        {!loading && topRankings.length > 0 && (
           <div className="top-rankings-section">
             <h3>🏆 Top 5 Performers</h3>
             <div className="rankings-list">
@@ -512,7 +375,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
                     {result.studentName === studentName && ' (You)'}
                   </span>
                   <span className="ranking-score">
-                    {result.score}/{activeQuiz.questions.length}
+                    {result.score}/{totalQuestions}
                   </span>
                   <span className="ranking-percentage">
                     {result.percentage}%
@@ -521,7 +384,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
               ))}
             </div>
           </div>
-        )} */}
+        )}
 
         <div className="quiz-info-card">
           <h3>{activeQuiz.name}</h3>
@@ -532,7 +395,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
             </div>
             <div className="info-item">
               <span className="label">Duration</span>
-              <span className="value">{Math.ceil((activeQuiz.questions.length * activeQuiz.timePerQuestion) / 60)} min</span>
+              <span className="value">{Math.ceil((totalQuestions * activeQuiz.timePerQuestion) / 60)} min</span>
             </div>
             <div className="info-item">
               <span className="label">Participants</span>
@@ -546,7 +409,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
             <div className="achievement-icon">{getRankIcon()}</div>
             <div className="achievement-text">
               <h4>Top Performer!</h4>
-              <p>You ranked #{userRank} </p>
+              <p>You ranked #{userRank} out of {allResults.length} participants</p>
             </div>
           </div>
         )}
@@ -628,6 +491,81 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           color: #856404;
           margin: 0;
           opacity: 0.8;
+        }
+
+        /* Add the rest of your existing QuizResults CSS here */
+        .score-total {
+          font-size: 1rem;
+          opacity: 0.9;
+        }
+
+        .top-rankings-section {
+          margin: 25px 0;
+          text-align: left;
+        }
+
+        .top-rankings-section h3 {
+          color: #2c3e50;
+          margin-bottom: 15px;
+          text-align: center;
+          font-size: 1.2rem;
+        }
+
+        .rankings-list {
+          space-y: 8px;
+        }
+
+        .ranking-item {
+          display: flex;
+          align-items: center;
+          padding: 12px 15px;
+          background: #f8f9fa;
+          border-radius: 10px;
+          margin-bottom: 8px;
+          transition: all 0.3s ease;
+          border-left: 4px solid transparent;
+        }
+
+        .ranking-item.current-user {
+          background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+          border-left-color: #2196f3;
+          font-weight: 600;
+        }
+
+        .ranking-item:hover {
+          transform: translateX(5px);
+          background: #e9ecef;
+        }
+
+        .rank-position {
+          width: 40px;
+          font-weight: bold;
+          font-size: 0.9rem;
+          text-align: center;
+          color: #2c3e50;
+        }
+
+        .student-name {
+          flex: 1;
+          color: #2c3e50;
+          font-size: 0.9rem;
+          padding: 0 10px;
+        }
+
+        .ranking-score {
+          width: 70px;
+          text-align: center;
+          font-weight: 600;
+          color: #495057;
+          font-size: 0.85rem;
+        }
+
+        .ranking-percentage {
+          width: 50px;
+          text-align: center;
+          color: #28a745;
+          font-weight: 600;
+          font-size: 0.85rem;
         }
 
         @media (max-width: 768px) {

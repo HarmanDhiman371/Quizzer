@@ -9,7 +9,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   const [selectedAnswer, setSelectedAnswer] = useState('');
   const [joinTime, setJoinTime] = useState(Date.now());
   const [hasSavedFinal, setHasSavedFinal] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [quizStarted, setQuizStarted] = useState(false);
   
   // Validate quiz data on component mount
@@ -67,80 +66,13 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     calculateMissedQuestions
   } = useQuizSync(activeQuiz);
 
-  // Enter fullscreen function - must be called from user gesture
-  const enterFullscreen = () => {
-    const element = document.documentElement;
-    
-    if (element.requestFullscreen) {
-      element.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-        setQuizStarted(true);
-      }).catch(err => {
-        console.log('Fullscreen error:', err);
-        // If fullscreen fails, still start the quiz
-        setQuizStarted(true);
-      });
-    } else if (element.webkitRequestFullscreen) {
-      element.webkitRequestFullscreen();
-      setIsFullscreen(true);
-      setQuizStarted(true);
-    } else if (element.msRequestFullscreen) {
-      element.msRequestFullscreen();
-      setIsFullscreen(true);
-      setQuizStarted(true);
-    } else {
-      // Fullscreen not supported, still start the quiz
-      console.log('Fullscreen not supported');
-      setQuizStarted(true);
-    }
-  };
-
-  // Exit fullscreen function
-  const exitFullscreen = () => {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    } else if (document.msExitFullscreen) {
-      document.msExitFullscreen();
-    }
-  };
-
-  // Handle fullscreen changes
+  // Start quiz immediately when component mounts for active quiz
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      const fullscreenElement = document.fullscreenElement || 
-                               document.webkitFullscreenElement || 
-                               document.msFullscreenElement;
-      setIsFullscreen(!!fullscreenElement);
-      
-      // If user exits fullscreen manually, keep quiz running
-      if (!fullscreenElement && quizStarted) {
-        // Quiz continues but without fullscreen
-        console.log('User exited fullscreen manually');
-      }
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('msfullscreenchange', handleFullscreenChange);
-    
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-    };
-  }, [quizStarted]);
-
-  // Auto-exit fullscreen when quiz ends
-  useEffect(() => {
-    if (quizStatus === 'ended' && isFullscreen) {
-      // Small delay to show completion message before exiting fullscreen
-      setTimeout(() => {
-        exitFullscreen();
-      }, 2000);
+    if (activeQuiz && activeQuiz.status === 'active') {
+      setQuizStarted(true);
+      setJoinTime(Date.now());
     }
-  }, [quizStatus, isFullscreen]);
+  }, [activeQuiz]);
 
   // Copy protection effect
   useEffect(() => {
@@ -163,11 +95,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
         return false;
       }
       if (e.key === 'PrintScreen' || e.key === 'F12') {
-        e.preventDefault();
-        return false;
-      }
-      // Prevent F11 for fullscreen
-      if (e.key === 'F11') {
         e.preventDefault();
         return false;
       }
@@ -197,38 +124,49 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   }, [activeQuiz]);
 
   // Calculate score function with useCallback to prevent recreation
-  const calculateScore = useCallback((currentAnswers) => {
-    if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
-      console.error('❌ Cannot calculate score: No questions available');
-      return 0;
-    }
-    
-    const missedCount = calculateMissedQuestions(joinTime);
-    let score = 0;
-    
-    activeQuiz.questions.forEach((question, index) => {
-      if (index >= missedCount) {
-        const studentAnswer = currentAnswers[index] || '';
-        const correctAnswer = question.correctAnswer;
-        
-        if (studentAnswer === correctAnswer) {
-          score++;
-        }
+ // In QuizInterface.js - Fix the calculateScore function
+const calculateScore = useCallback((currentAnswers) => {
+  if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
+    console.error('❌ Cannot calculate score: No questions available');
+    return 0;
+  }
+  
+  const missedCount = calculateMissedQuestions(joinTime);
+  let score = 0;
+  
+  console.log('🔍 Calculating score:', {
+    totalQuestions: activeQuiz.questions.length,
+    missedCount: missedCount,
+    answers: currentAnswers
+  });
+  
+  activeQuiz.questions.forEach((question, index) => {
+    // Only count questions that weren't missed
+    if (index >= missedCount) {
+      const studentAnswer = currentAnswers[index] || '';
+      const correctAnswer = question.correctAnswer;
+      
+      console.log(`Q${index + 1}: Student: "${studentAnswer}", Correct: "${correctAnswer}", Match: ${studentAnswer === correctAnswer}`);
+      
+      if (studentAnswer === correctAnswer) {
+        score++;
       }
-    });
-    
-    return score;
-  }, [activeQuiz, joinTime, calculateMissedQuestions]);
+    } else {
+      console.log(`Q${index + 1}: Missed due to late join`);
+    }
+  });
+  
+  console.log('🎯 Final score:', score);
+  return score;
+}, [activeQuiz, joinTime, calculateMissedQuestions]);
 
   // Initialize answers only once
   useEffect(() => {
     if (activeQuiz && activeQuiz.questions && activeQuiz.questions.length > 0 && answers.length === 0) {
       const initialAnswers = new Array(activeQuiz.questions.length).fill('');
-      const missedCount = calculateMissedQuestions(joinTime);
-      
       setAnswers(initialAnswers);
     }
-  }, [activeQuiz, answers.length, calculateMissedQuestions, joinTime]);
+  }, [activeQuiz, answers.length]);
 
   // Update selected answer when question changes
   useEffect(() => {
@@ -267,40 +205,43 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   };
 
   // Handle quiz completion
-  useEffect(() => {
-    if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted) {
-      const finalScore = calculateScore(answers);
-      
-      saveOrUpdateQuizResult({
-        studentName: studentName,
-        score: finalScore,
-        totalQuestions: activeQuiz.questions.length,
-        percentage: Math.round((finalScore / activeQuiz.questions.length) * 100),
-        quizId: activeQuiz.id,
-        quizName: activeQuiz.name,
-        joinTime: joinTime,
-        answers: answers,
-        completedAt: Date.now()
-      }).then(() => {
-        setHasSavedFinal(true);
-        onQuizComplete(finalScore);
-      }).catch(error => {
-        console.error('❌ Error saving final result:', error);
-        setHasSavedFinal(true);
-        onQuizComplete(finalScore);
-      });
-    }
-  }, [
-    quizStatus, 
-    hasSavedFinal, 
-    activeQuiz, 
-    answers, 
-    studentName, 
-    joinTime, 
-    onQuizComplete,
-    calculateScore,
-    quizStarted
-  ]);
+  // Handle quiz completion - FIXED to prevent multiple saves
+useEffect(() => {
+  if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted) {
+    const finalScore = calculateScore(answers);
+    
+    // Set hasSavedFinal immediately to prevent multiple calls
+    setHasSavedFinal(true);
+    
+    saveOrUpdateQuizResult({
+      studentName: studentName,
+      score: finalScore,
+      totalQuestions: activeQuiz.questions.length,
+      percentage: Math.round((finalScore / activeQuiz.questions.length) * 100),
+      quizId: activeQuiz.id,
+      quizName: activeQuiz.name,
+      joinTime: joinTime,
+      answers: answers,
+      completedAt: Date.now()
+    }).then(() => {
+      console.log('✅ Final result saved for:', studentName);
+      onQuizComplete(finalScore);
+    }).catch(error => {
+      console.error('❌ Error saving final result:', error);
+      onQuizComplete(finalScore);
+    });
+  }
+}, [
+  quizStatus, 
+  hasSavedFinal, 
+  activeQuiz, 
+  answers, 
+  studentName, 
+  joinTime, 
+  onQuizComplete,
+  calculateScore,
+  quizStarted
+]);
 
   // Check if current question was missed
   const isQuestionMissed = currentQuestionIndex < calculateMissedQuestions(joinTime);
@@ -314,28 +255,20 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
           <h3>Quiz Not Available</h3>
           <p>There seems to be an issue with the quiz data.</p>
           <p>Please contact your teacher.</p>
-          <div className="error-details">
-            <p>Debug Info:</p>
-            <ul>
-              <li>Has Quiz: {activeQuiz ? 'Yes' : 'No'}</li>
-              <li>Has Questions: {activeQuiz?.questions ? 'Yes' : 'No'}</li>
-              <li>Questions Count: {activeQuiz?.questions?.length || 0}</li>
-            </ul>
-          </div>
         </div>
       </div>
     );
   }
 
-  // Show start screen if quiz hasn't started
-  if (!quizStarted) {
+  // Show start screen if quiz hasn't started but is active
+  if (!quizStarted && activeQuiz.status === 'active') {
     return (
       <div className="quiz-interface">
         <div className="quiz-start-screen">
           <div className="start-container">
-            <div className="start-icon">🚀</div>
-            <h1>Ready to Start?</h1>
-            <p>You are about to begin: <strong>{activeQuiz.name}</strong></p>
+            <div className="start-icon">🎯</div>
+            <h1>Quiz is Active!</h1>
+            <p>You are joining: <strong>{activeQuiz.name}</strong></p>
             
             <div className="quiz-info-card">
               <h3>Quiz Details</h3>
@@ -353,10 +286,8 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
                   <span className="value">{activeQuiz.timePerQuestion}s</span>
                 </div>
                 <div className="info-item">
-                  <span className="label">Total Time</span>
-                  <span className="value">
-                    {Math.ceil((activeQuiz.questions.length * activeQuiz.timePerQuestion) / 60)} min
-                  </span>
+                  <span className="label">Status</span>
+                  <span className="value">Active - Join Now</span>
                 </div>
               </div>
             </div>
@@ -364,25 +295,23 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
             <div className="instructions">
               <h4>📋 Important Instructions</h4>
               <ul>
-                <li>✅ The quiz will open in fullscreen mode</li>
                 <li>⏱️ Each question has {activeQuiz.timePerQuestion} seconds</li>
                 <li>📱 Do not refresh or leave the page</li>
-                <li>🚫 Switching tabs may end your quiz</li>
                 <li>🎯 Answer carefully - you can't go back!</li>
                 <li>💡 Select your answer and it will be saved automatically</li>
+                <li>⚠️ You joined late - some questions may be marked as missed</li>
               </ul>
             </div>
 
             <button 
               className="start-quiz-btn"
-              onClick={enterFullscreen}
+              onClick={() => {
+                setQuizStarted(true);
+                setJoinTime(Date.now());
+              }}
             >
-              🚀 Start Quiz Now
+              🚀 Join Quiz Now
             </button>
-
-            <p className="start-note">
-              Click the button above to begin your assessment in fullscreen mode
-            </p>
           </div>
         </div>
       </div>
@@ -417,14 +346,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   }
 
   return (
-    <div className={`quiz-interface ${isFullscreen ? 'fullscreen-active' : ''}`}>
-      {/* Fullscreen Warning */}
-      {isFullscreen && (
-        <div className="fullscreen-warning">
-          ⚠️ Assessment in Progress - Do not switch tabs or windows!
-        </div>
-      )}
-
+    <div className="quiz-interface">
       {/* Header Section */}
       <div className="quiz-header">
         <div className="header-left">
@@ -451,6 +373,11 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
         </div>
         <div className="progress-text">
           Progress: {currentQuestionIndex + 1}/{activeQuiz.questions.length} questions
+          {calculateMissedQuestions(joinTime) > 0 && (
+            <span className="missed-info">
+              (Missed: {calculateMissedQuestions(joinTime)} questions)
+            </span>
+          )}
         </div>
       </div>
 
@@ -523,9 +450,6 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
           <span>{quizStatus === 'active' ? 'Live' : 'Ended'}</span>
         </div>
       </div>
-
-      {/* Copy Protection Overlay */}
-      <div className="copy-protection-overlay"></div>
     </div>
   );
 };

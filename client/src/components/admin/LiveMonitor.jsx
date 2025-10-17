@@ -12,7 +12,7 @@ const LiveMonitor = () => {
   const [visibleRange, setVisibleRange] = useState([0, 20]);
   const listRef = useRef();
 
-  // NEW: Function to manually start the quiz
+  // Function to manually start the quiz
   const handleStartQuiz = async () => {
     try {
       console.log('🎬 Admin manually starting quiz...');
@@ -38,7 +38,7 @@ const LiveMonitor = () => {
 
   // Real-time listener for results - ONLY for current active quiz
   useEffect(() => {
-    if (!activeQuiz?.id || activeQuiz.status === 'inactive') {
+    if (!activeQuiz?.id) {
       setResults([]);
       return;
     }
@@ -61,7 +61,7 @@ const LiveMonitor = () => {
       console.log('🎯 Cleaning up real-time listener');
       unsubscribe();
     };
-  }, [activeQuiz?.id, activeQuiz?.status]);
+  }, [activeQuiz?.id]);
 
   // Virtual scrolling handler
   useEffect(() => {
@@ -69,7 +69,7 @@ const LiveMonitor = () => {
       if (!listRef.current) return;
       
       const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-      const itemHeight = 60;
+      const itemHeight = 80; // Increased height for tab switch info
       const startIndex = Math.floor(scrollTop / itemHeight);
       const endIndex = Math.min(
         startIndex + Math.ceil(clientHeight / itemHeight) + 5,
@@ -140,8 +140,10 @@ const LiveMonitor = () => {
     );
   }
 
-  // NEW: Show start quiz section when quiz is in waiting status
+  // Show waiting room section when quiz is in waiting status
   if (activeQuiz.status === 'waiting') {
+    const waitingParticipants = activeQuiz.waitingParticipants || [];
+    
     return (
       <div className="live-monitor">
         <div className="waiting-quiz-section">
@@ -155,7 +157,7 @@ const LiveMonitor = () => {
 
           <div className="waiting-stats">
             <div className="stat-card">
-              <div className="stat-value">{results.length}</div>
+              <div className="stat-value">{waitingParticipants.length}</div>
               <div className="stat-label">Students in Waiting Room</div>
             </div>
             <div className="stat-card">
@@ -180,14 +182,14 @@ const LiveMonitor = () => {
             </button>
           </div>
 
-          {results.length > 0 && (
+          {waitingParticipants.length > 0 && (
             <div className="waiting-participants">
-              <h5>👥 Students in Waiting Room ({results.length})</h5>
+              <h5>👥 Students in Waiting Room ({waitingParticipants.length})</h5>
               <div className="participants-grid">
-                {results.map((result, index) => (
-                  <div key={result.id} className="participant-badge">
+                {waitingParticipants.map((participant, index) => (
+                  <div key={index} className="participant-badge">
                     <span className="participant-avatar">👤</span>
-                    <span className="participant-name">{result.studentName}</span>
+                    <span className="participant-name">{participant}</span>
                   </div>
                 ))}
               </div>
@@ -364,8 +366,17 @@ const LiveMonitor = () => {
     )
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 
+  // Real tab switch data from Firebase
+  let tabSwitchData = {};
+  uniqueParticipants.forEach(result => {
+    tabSwitchData[result.studentName] = {
+      count: result.tabSwitches || 0,
+      lastSwitch: result.lastActivity?.toDate?.() || null
+    };
+  });
+
   const visibleParticipants = uniqueParticipants.slice(visibleRange[0], visibleRange[1]);
-  const itemHeight = 60;
+  const itemHeight = 80; // Increased for tab switch info
   const totalHeight = uniqueParticipants.length * itemHeight;
   const offsetY = visibleRange[0] * itemHeight;
 
@@ -454,6 +465,8 @@ const LiveMonitor = () => {
               >
                 {visibleParticipants.map((result, index) => {
                   const globalIndex = visibleRange[0] + index;
+                  const tabSwitchInfo = tabSwitchData[result.studentName] || { count: 0, lastSwitch: null };
+                  
                   return (
                     <div 
                       key={`${result.id}-${result.studentName}`} 
@@ -468,6 +481,17 @@ const LiveMonitor = () => {
                       <span className="student">{result.studentName}</span>
                       <span className="score">{result.score || 0}/{activeQuiz.questions?.length || 0}</span>
                       <span className="percentage">{result.percentage || 0}%</span>
+                      <span className="tab-switches">
+                        {tabSwitchInfo.count > 0 ? (
+                          <span className="tab-warning" title={`${tabSwitchInfo.count} tab switches detected`}>
+                            🔄 {tabSwitchInfo.count}
+                          </span>
+                        ) : (
+                          <span className="tab-ok" title="No tab switches detected">
+                            ✅
+                          </span>
+                        )}
+                      </span>
                       <span className="status">
                         {result.completedAt ? '✅ Completed' : '🎯 In Progress'}
                       </span>
@@ -568,7 +592,7 @@ const LiveMonitor = () => {
         }
 
         .virtual-list-container {
-          height: 400px;
+          height: 500px;
           overflow-y: auto;
           border: 1px solid #e9ecef;
           border-radius: 8px;
@@ -627,6 +651,26 @@ const LiveMonitor = () => {
           font-weight: bold;
         }
 
+        .tab-switches {
+          width: 80px;
+          text-align: center;
+        }
+
+        .tab-warning {
+          background: #fff3cd;
+          color: #856404;
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          border: 1px solid #ffeaa7;
+        }
+
+        .tab-ok {
+          color: #28a745;
+          font-size: 0.9rem;
+        }
+
         .status {
           width: 120px;
           text-align: right;
@@ -673,9 +717,13 @@ const LiveMonitor = () => {
             font-size: 0.9rem;
           }
 
-          .rank, .score, .percentage, .status {
+          .rank, .score, .percentage, .tab-switches, .status {
             width: auto;
             margin-right: 10px;
+          }
+
+          .student {
+            min-width: 100px;
           }
         }
       `}</style>
