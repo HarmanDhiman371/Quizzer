@@ -12,7 +12,7 @@ const LiveMonitor = () => {
   const [visibleRange, setVisibleRange] = useState([0, 20]);
   const listRef = useRef();
 
-  // Function to manually start the quiz - KEEP ORIGINAL WORKING VERSION
+  // Function to manually start the quiz
   const handleStartQuiz = async () => {
     try {
       console.log('🎬 Admin manually starting quiz...');
@@ -126,6 +126,35 @@ const LiveMonitor = () => {
       alert('Error resuming quiz: ' + error.message);
     }
   };
+
+  // FIXED: Calculate current question index for display
+  const getCurrentQuestionIndex = () => {
+    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
+      return 0;
+    }
+
+    if (activeQuiz.status === 'paused' || activeQuiz.status === 'waiting') {
+      return activeQuiz.currentQuestionIndex || 0;
+    }
+
+    if (activeQuiz.status === 'inactive') {
+      return 0;
+    }
+
+    // Calculate based on current time
+    const currentTime = Date.now();
+    const quizStartTime = activeQuiz.quizStartTime;
+    const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
+    
+    const elapsedTime = currentTime - quizStartTime;
+    const questionIndex = Math.floor(elapsedTime / timePerQuestion);
+    
+    return Math.min(questionIndex, activeQuiz.questions.length - 1);
+  };
+
+  // FIXED: Get current question display
+  const currentQuestionIndex = getCurrentQuestionIndex();
+  const currentQuestionDisplay = currentQuestionIndex + 1; // Convert to 1-based for display
 
   if (!activeQuiz || activeQuiz.status === 'inactive') {
     return (
@@ -442,9 +471,10 @@ const LiveMonitor = () => {
           <div className="stat-value">{activeQuiz.timePerQuestion}s</div>
           <div className="stat-label">Time per Question</div>
         </div>
+        {/* FIXED: Current Question Display */}
         <div className="stat-card">
           <div className="stat-value">
-            {activeQuiz.currentQuestionIndex + 1}/{activeQuiz.questions?.length || 0}
+            {currentQuestionDisplay}/{activeQuiz.questions?.length || 0}
           </div>
           <div className="stat-label">Current Question</div>
         </div>

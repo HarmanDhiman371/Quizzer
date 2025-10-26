@@ -18,25 +18,24 @@ export const useQuizSync = (activeQuiz) => {
     };
   }, []);
 
-  // FIXED: Calculate missed questions - fixed calculation
- // FIXED: Calculate missed questions - fixed calculation
-const calculateMissedQuestions = useCallback((studentJoinTime) => {
-  if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
-    return 0;
-  }
+  // FIXED: Calculate missed questions
+  const calculateMissedQuestions = useCallback((studentJoinTime) => {
+    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
+      return 0;
+    }
 
-  // If student joined before quiz started, no questions missed
-  if (studentJoinTime <= activeQuiz.quizStartTime) {
-    return 0;
-  }
+    // If student joined before quiz started, no questions missed
+    if (studentJoinTime <= activeQuiz.quizStartTime) {
+      return 0;
+    }
 
-  const timeLate = studentJoinTime - activeQuiz.quizStartTime;
-  const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
-  const missedCount = Math.floor(timeLate / timePerQuestion);
-  
-  // FIXED: Don't allow more missed questions than total questions
-  return Math.min(missedCount, activeQuiz.questions.length);
-}, [activeQuiz]);
+    const timeLate = studentJoinTime - activeQuiz.quizStartTime;
+    const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
+    const missedCount = Math.floor(timeLate / timePerQuestion);
+    
+    // Don't allow more missed questions than total questions
+    return Math.min(missedCount, activeQuiz.questions.length);
+  }, [activeQuiz]);
 
   // FIXED: Get current question index using server time
   const getCurrentQuestionIndex = useCallback(() => {
@@ -52,18 +51,18 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
       return 0;
     }
 
-    // Calculate based on server time
-    const serverTime = activeQuiz.serverTime || Date.now();
+    // FIXED: Use current time instead of server time for real-time updates
+    const currentTime = Date.now();
     const quizStartTime = activeQuiz.quizStartTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
-    const elapsedTime = serverTime - quizStartTime;
+    const elapsedTime = currentTime - quizStartTime;
     const questionIndex = Math.floor(elapsedTime / timePerQuestion);
     
     return Math.min(questionIndex, activeQuiz.questions.length - 1);
   }, [activeQuiz]);
 
-  // FIXED: Get time remaining with server time
+  // FIXED: Get time remaining with current time
   const getTimeRemaining = useCallback(() => {
     if (!activeQuiz || !activeQuiz.quizStartTime) {
       return 0;
@@ -77,13 +76,14 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
       return 0;
     }
 
-    const serverTime = activeQuiz.serverTime || Date.now();
+    // FIXED: Use current time for real-time countdown
+    const currentTime = Date.now();
     const quizStartTime = activeQuiz.quizStartTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
     const currentIndex = getCurrentQuestionIndex();
     const questionStartTime = quizStartTime + (currentIndex * timePerQuestion);
-    const timeLeft = (questionStartTime + timePerQuestion) - serverTime;
+    const timeLeft = (questionStartTime + timePerQuestion) - currentTime;
     
     return Math.max(0, Math.floor(timeLeft / 1000));
   }, [activeQuiz, getCurrentQuestionIndex]);
@@ -94,11 +94,11 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
       return false;
     }
 
-    const serverTime = activeQuiz.serverTime || Date.now();
+    const currentTime = Date.now();
     const quizStartTime = activeQuiz.quizStartTime;
     const totalQuizTime = activeQuiz.questions.length * (activeQuiz.timePerQuestion || 30) * 1000;
     
-    return (serverTime - quizStartTime) >= totalQuizTime;
+    return (currentTime - quizStartTime) >= totalQuizTime;
   }, [activeQuiz]);
 
   useEffect(() => {
@@ -117,6 +117,14 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
       const remaining = getTimeRemaining();
       const ended = hasQuizEnded();
 
+      console.log('🔄 Quiz Sync Update:', {
+        currentIndex: serverIndex,
+        timeRemaining: remaining,
+        quizEnded: ended,
+        quizStatus: activeQuiz.status,
+        totalQuestions: activeQuiz.questions?.length
+      });
+
       setCurrentQuestionIndex(serverIndex);
       setTimeRemaining(remaining);
 
@@ -133,6 +141,7 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
 
       // Auto-end quiz when time is up
       if (ended && activeQuiz.status === 'active') {
+        console.log('⏰ Quiz time ended automatically');
         setQuizStatus('ended');
         endActiveQuiz();
         if (intervalRef.current) {
@@ -145,7 +154,8 @@ const calculateMissedQuestions = useCallback((studentJoinTime) => {
       clearInterval(intervalRef.current);
     }
 
-    intervalRef.current = setInterval(updateQuizState, 1000);
+    // FIXED: More frequent updates for better accuracy
+    intervalRef.current = setInterval(updateQuizState, 500);
     updateQuizState();
 
     return () => {

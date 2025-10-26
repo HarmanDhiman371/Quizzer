@@ -26,7 +26,8 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
           id: activeQuiz.id,
           originalId: activeQuiz.originalQuizId,
           usingId: quizIdToUse,
-          name: activeQuiz.name
+          name: activeQuiz.name,
+          totalQuestions: totalQuestions
         });
         
         // FIXED: Get ALL results without filtering by quizName
@@ -189,50 +190,52 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
         .complete-results {
           min-height: 100vh;
           background: linear-gradient(135deg, #023e8a 0%, #03045e 100%);
-          padding: 15px;
+          padding: 12px;
           font-family: 'Inter', 'Segoe UI', sans-serif;
         }
 
         .results-container {
           background: white;
           border-radius: 20px;
-          padding: 25px 20px;
+          padding: 20px;
           max-width: 800px;
           margin: 0 auto;
-          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
         }
 
         .results-header {
           text-align: center;
-          margin-bottom: 25px;
+          margin-bottom: 20px;
         }
 
         .trophy-icon {
-          font-size: 3rem;
-          margin-bottom: 12px;
+          font-size: 2.8rem;
+          margin-bottom: 10px;
           animation: bounce 2s ease infinite;
         }
 
         @keyframes bounce {
           0%, 100% { transform: translateY(0) scale(1); }
-          50% { transform: translateY(-6px) scale(1.05); }
+          50% { transform: translateY(-5px) scale(1.05); }
         }
 
         .results-header h1 {
           color: #2c3e50;
-          margin-bottom: 6px;
-          font-size: 1.8rem;
+          margin-bottom: 5px;
+          font-size: 1.7rem;
           font-weight: 700;
+          line-height: 1.2;
         }
 
         .results-header p {
           color: #6c757d;
-          font-size: 1rem;
-          margin: 4px 0;
+          font-size: 0.95rem;
+          margin: 3px 0;
+          line-height: 1.3;
         }
 
         .quiz-info {
-          font-size: 0.85rem;
+          font-size: 0.8rem;
           color: #28a745;
           font-weight: 600;
         }
@@ -240,45 +243,47 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
         .participants-count {
           text-align: center;
           color: #6c757d;
-          margin-bottom: 15px;
-          font-size: 0.85rem;
+          margin-bottom: 12px;
+          font-size: 0.8rem;
         }
 
         .personal-score-card {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
-          padding: 25px 20px;
+          padding: 20px 15px;
           border-radius: 16px;
-          margin-bottom: 25px;
+          margin-bottom: 20px;
           text-align: center;
         }
 
         .personal-score-card h3 {
-          margin: 0 0 15px 0;
-          font-size: 1.2rem;
+          margin: 0 0 12px 0;
+          font-size: 1.1rem;
+          font-weight: 600;
         }
 
         .score-display {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 20px;
+          gap: 15px;
           flex-wrap: wrap;
         }
 
         .score-circle {
           display: flex;
           align-items: baseline;
-          gap: 4px;
+          gap: 3px;
         }
 
         .score {
-          font-size: 2.2rem;
+          font-size: 2rem;
           font-weight: 800;
+          line-height: 1;
         }
 
         .total {
-          font-size: 1.2rem;
+          font-size: 1.1rem;
           opacity: 0.9;
         }
 
@@ -287,45 +292,49 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
         }
 
         .percentage {
-          font-size: 1.5rem;
+          font-size: 1.3rem;
           font-weight: 700;
-          margin-bottom: 4px;
+          margin-bottom: 3px;
+          line-height: 1;
         }
 
         .rank {
-          font-size: 1rem;
+          font-size: 0.9rem;
           opacity: 0.9;
+          line-height: 1.2;
         }
 
         .ranking-section {
-          margin-bottom: 25px;
+          margin-bottom: 20px;
         }
 
         .ranking-section h3 {
           color: #2c3e50;
-          margin-bottom: 15px;
+          margin-bottom: 12px;
           text-align: center;
-          font-size: 1.2rem;
+          font-size: 1.1rem;
+          font-weight: 600;
         }
 
         .rankings-list {
-          space-y: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
 
         .ranking-item {
           display: flex;
           align-items: center;
-          padding: 12px 15px;
+          padding: 10px 12px;
           background: #f8f9fa;
-          border-radius: 12px;
-          transition: all 0.3s ease;
-          border-left: 4px solid transparent;
-          flex-wrap: wrap;
+          border-radius: 10px;
+          transition: all 0.2s ease;
+          border-left: 3px solid transparent;
           gap: 8px;
         }
 
         .ranking-item:hover {
-          transform: translateX(3px);
+          transform: translateX(2px);
           background: #e9ecef;
         }
 
@@ -336,9 +345,9 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
         }
 
         .rank-badge {
-          width: 50px;
+          width: 40px;
           font-weight: bold;
-          font-size: 1rem;
+          font-size: 0.9rem;
           text-align: center;
           flex-shrink: 0;
         }
@@ -347,71 +356,80 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
           flex: 1;
           display: flex;
           align-items: center;
-          gap: 6px;
-          min-width: 120px;
+          gap: 5px;
+          min-width: 0;
+          overflow: hidden;
         }
 
         .name {
           color: #2c3e50;
           font-weight: 500;
-          font-size: 0.95rem;
+          font-size: 0.9rem;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          flex: 1;
         }
 
         .you-tag {
           background: #28a745;
           color: white;
           padding: 2px 6px;
-          border-radius: 8px;
-          font-size: 0.65rem;
+          border-radius: 6px;
+          font-size: 0.6rem;
           font-weight: 700;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
 
         .score-info {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-right: 10px;
+          gap: 8px;
           flex-shrink: 0;
+          margin-left: auto;
         }
 
         .score-info .score {
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           font-weight: 600;
           color: #495057;
+          white-space: nowrap;
         }
 
         .score-info .percentage {
-          font-size: 0.85rem;
+          font-size: 0.8rem;
           color: #28a745;
           font-weight: 600;
+          white-space: nowrap;
         }
 
         .tab-info {
-          width: 50px;
-          text-align: center;
           flex-shrink: 0;
+          margin-left: 4px;
         }
 
         .tab-warning {
           background: #fff3cd;
           color: #856404;
-          padding: 3px 6px;
-          border-radius: 10px;
-          font-size: 0.75rem;
+          padding: 2px 5px;
+          border-radius: 8px;
+          font-size: 0.7rem;
           font-weight: 600;
+          white-space: nowrap;
         }
 
         .tab-ok {
           color: #28a745;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
         }
 
         .retake-btn {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
           border: none;
-          padding: 14px 25px;
-          border-radius: 20px;
+          padding: 14px 20px;
+          border-radius: 12px;
           font-size: 1rem;
           font-weight: 700;
           cursor: pointer;
@@ -427,7 +445,7 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
 
         .loading-container {
           text-align: center;
-          padding: 50px 15px;
+          padding: 40px 15px;
           color: white;
         }
 
@@ -435,10 +453,10 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
           border: 4px solid rgba(255, 255, 255, 0.3);
           border-top: 4px solid white;
           border-radius: 50%;
-          width: 40px;
-          height: 40px;
+          width: 35px;
+          height: 35px;
           animation: spin 1s linear infinite;
-          margin: 0 auto 15px;
+          margin: 0 auto 12px;
         }
 
         @keyframes spin {
@@ -446,125 +464,282 @@ const CompleteResults = ({ score, activeQuiz, studentName, onRetake }) => {
           100% { transform: rotate(360deg); }
         }
 
-        /* Mobile-specific styles */
+        /* Desktop and Tablet Styles */
+        @media (min-width: 769px) {
+          .results-container {
+            padding: 25px;
+          }
+
+          .trophy-icon {
+            font-size: 3rem;
+          }
+
+          .results-header h1 {
+            font-size: 1.8rem;
+          }
+
+          .personal-score-card {
+            padding: 25px 20px;
+          }
+
+          .score {
+            font-size: 2.2rem;
+          }
+
+          .ranking-item {
+            padding: 12px 15px;
+          }
+        }
+
+        /* Enhanced Mobile-specific styles */
         @media (max-width: 480px) {
           .complete-results {
-            padding: 10px;
+            padding: 8px;
           }
 
           .results-container {
-            padding: 20px 15px;
+            padding: 16px 12px;
             border-radius: 16px;
           }
 
           .trophy-icon {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
+            margin-bottom: 8px;
           }
 
           .results-header h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
+            margin-bottom: 4px;
           }
 
           .results-header p {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
+            margin: 2px 0;
           }
 
           .personal-score-card {
-            padding: 20px 15px;
-            border-radius: 14px;
+            padding: 16px 12px;
+            border-radius: 12px;
+            margin-bottom: 16px;
           }
 
           .personal-score-card h3 {
-            font-size: 1.1rem;
+            font-size: 1rem;
+            margin-bottom: 10px;
           }
 
           .score-display {
             flex-direction: column;
-            gap: 12px;
+            gap: 10px;
+          }
+
+          .score-circle {
+            gap: 2px;
           }
 
           .score {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
           }
 
           .total {
-            font-size: 1rem;
+            font-size: 0.95rem;
           }
 
           .percentage {
-            font-size: 1.3rem;
+            font-size: 1.1rem;
+            margin-bottom: 2px;
           }
 
           .rank {
-            font-size: 0.9rem;
-          }
-
-          .ranking-item {
-            padding: 10px 12px;
-            gap: 6px;
-          }
-
-          .rank-badge {
-            width: 40px;
-            font-size: 0.9rem;
-          }
-
-          .student-info {
-            min-width: 100px;
-            order: 2;
-            flex-basis: calc(100% - 100px);
-          }
-
-          .score-info {
-            order: 3;
-            margin-right: 0;
-            flex-basis: 100%;
-            justify-content: center;
-            margin-top: 5px;
-          }
-
-          .tab-info {
-            order: 4;
-            width: auto;
-          }
-
-          .ranking-section h3 {
-            font-size: 1.1rem;
-          }
-
-          .name {
-            font-size: 0.9rem;
-          }
-
-          .score-info .score {
             font-size: 0.85rem;
           }
 
-          .score-info .percentage {
+          .ranking-section {
+            margin-bottom: 16px;
+          }
+
+          .ranking-section h3 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+          }
+
+          .rankings-list {
+            gap: 5px;
+          }
+
+          .ranking-item {
+            padding: 8px 10px;
+            gap: 6px;
+            min-height: 44px;
+          }
+
+          .rank-badge {
+            width: 35px;
+            font-size: 0.85rem;
+          }
+
+          .student-info {
+            gap: 4px;
+            min-width: 0;
+          }
+
+          .name {
+            font-size: 0.85rem;
+            flex: 1;
+            min-width: 0;
+          }
+
+          .you-tag {
+            font-size: 0.55rem;
+            padding: 1px 4px;
+          }
+
+          .score-info {
+            gap: 6px;
+            margin-left: auto;
+          }
+
+          .score-info .score {
             font-size: 0.8rem;
           }
 
+          .score-info .percentage {
+            font-size: 0.75rem;
+          }
+
+          .tab-info {
+            margin-left: 2px;
+          }
+
+          .tab-warning {
+            font-size: 0.65rem;
+            padding: 1px 4px;
+          }
+
+          .tab-ok {
+            font-size: 0.7rem;
+          }
+
           .retake-btn {
-            padding: 12px 20px;
-            font-size: 0.95rem;
+            padding: 12px 16px;
+            font-size: 0.9rem;
+            border-radius: 10px;
+            margin-top: 12px;
           }
         }
 
         @media (max-width: 360px) {
           .results-container {
-            padding: 15px 10px;
+            padding: 14px 10px;
+            border-radius: 14px;
           }
 
           .ranking-item {
-            padding: 8px 10px;
-          }
-
-          .student-info {
-            min-width: 80px;
+            padding: 7px 8px;
+            gap: 5px;
+            min-height: 42px;
           }
 
           .rank-badge {
-            width: 35px;
+            width: 30px;
+            font-size: 0.8rem;
+          }
+
+          .name {
+            font-size: 0.8rem;
+          }
+
+          .score-info .score {
+            font-size: 0.75rem;
+          }
+
+          .score-info .percentage {
+            font-size: 0.7rem;
+          }
+
+          .results-header h1 {
+            font-size: 1.3rem;
+          }
+
+          .trophy-icon {
+            font-size: 2rem;
+          }
+        }
+
+        /* Extra small devices */
+        @media (max-width: 320px) {
+          .complete-results {
+            padding: 6px;
+          }
+
+          .results-container {
+            padding: 12px 8px;
+          }
+
+          .ranking-item {
+            padding: 6px;
+            gap: 4px;
+          }
+
+          .rank-badge {
+            width: 28px;
+            font-size: 0.75rem;
+          }
+
+          .student-info {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+          }
+
+          .name {
+            font-size: 0.78rem;
+          }
+
+          .score-info {
+            flex-direction: column;
+            gap: 2px;
+            align-items: flex-end;
+          }
+
+          .score-info .score,
+          .score-info .percentage {
+            font-size: 0.7rem;
+          }
+        }
+
+        /* Very small devices (iPhone 5/SE) */
+        @media (max-width: 280px) {
+          .complete-results {
+            padding: 4px;
+          }
+
+          .results-container {
+            padding: 10px 6px;
+            border-radius: 12px;
+          }
+
+          .ranking-item {
+            padding: 5px;
+            gap: 3px;
+          }
+
+          .rank-badge {
+            width: 25px;
+            font-size: 0.7rem;
+          }
+
+          .name {
+            font-size: 0.75rem;
+          }
+
+          .score-info .score,
+          .score-info .percentage {
+            font-size: 0.65rem;
+          }
+
+          .retake-btn {
+            padding: 10px 12px;
             font-size: 0.85rem;
           }
         }
