@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useQuizSync } from '../../hooks/useQuizSync';
 import { saveOrUpdateQuizResult } from '../../utils/firestore';
+import { getSyncTime, initializeTimeSync } from '../../utils/timeSync';
+
 import Timer from '../shared/Timer';
 import './quiz.css';
 
@@ -68,12 +70,20 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   } = useQuizSync(activeQuiz);
 
   // Start quiz immediately when component mounts for active quiz
-  useEffect(() => {
+   useEffect(() => {
+    const initTimeSync = async () => {
+      await initializeTimeSync();
+      // FIXED: Use synchronized time for join time
+      const syncJoinTime = getSyncTime();
+      setJoinTime(syncJoinTime);
+      console.log('⏰ Student joined with synchronized time:', new Date(syncJoinTime).toISOString());
+    };
+
     if (activeQuiz && activeQuiz.status === 'active') {
       setQuizStarted(true);
-      setJoinTime(Date.now());
+      initTimeSync();
     }
-  }, [activeQuiz]);
+  }, [activeQuiz , initializeTimeSync , getSyncTime]);
 
   // Copy protection effect
   useEffect(() => {
@@ -232,7 +242,7 @@ const calculateScore = useCallback((currentAnswers) => {
             quizName: activeQuiz.name,
             joinTime: joinTime,
             answers: answers,
-            completedAt: Date.now()
+            completedAt: getSyncTime()
           });
           
           console.log('✅ Final result saved for:', studentName, 'Score:', finalScore);
@@ -325,7 +335,7 @@ const calculateScore = useCallback((currentAnswers) => {
               className="start-quiz-btn"
               onClick={() => {
                 setQuizStarted(true);
-                setJoinTime(Date.now());
+                setJoinTime(getSyncTime());
               }}
             >
               🚀 Join Quiz Now

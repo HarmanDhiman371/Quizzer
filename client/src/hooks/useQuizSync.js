@@ -1,15 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { updateCurrentQuestion, endActiveQuiz } from '../utils/firestore';
+import { endActiveQuiz } from '../utils/firestore';
+import { getSyncTime, initializeTimeSync, isTimeSynced } from '../utils/timeSync';
 
 export const useQuizSync = (activeQuiz) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [quizStatus, setQuizStatus] = useState('waiting');
+  const [timeOffset, setTimeOffset] = useState(0);
   const intervalRef = useRef(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
+    
+    // Initialize time synchronization
+    const initTimeSync = async () => {
+      const offset = await initializeTimeSync();
+      setTimeOffset(offset);
+    };
+    
+    initTimeSync();
+
     return () => {
       mountedRef.current = false;
       if (intervalRef.current) {
@@ -18,12 +29,15 @@ export const useQuizSync = (activeQuiz) => {
     };
   }, []);
 
-  // FIXED: Calculate missed questions
+  // FIXED: Calculate missed questions with synchronized time
   const calculateMissedQuestions = useCallback((studentJoinTime) => {
     if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
       return 0;
     }
 
+    // FIXED: Use synchronized time for calculations
+    const syncTime = getSyncTime();
+    
     // If student joined before quiz started, no questions missed
     if (studentJoinTime <= activeQuiz.quizStartTime) {
       return 0;
@@ -37,7 +51,7 @@ export const useQuizSync = (activeQuiz) => {
     return Math.min(missedCount, activeQuiz.questions.length);
   }, [activeQuiz]);
 
-  // FIXED: Get current question index using server time
+  // FIXED: Get current question index using synchronized time
   const getCurrentQuestionIndex = useCallback(() => {
     if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
       return 0;
@@ -51,18 +65,18 @@ export const useQuizSync = (activeQuiz) => {
       return 0;
     }
 
-    // FIXED: Use current time instead of server time for real-time updates
-    const currentTime = Date.now();
+    // FIXED: Use synchronized time instead of client time
+    const syncTime = getSyncTime();
     const quizStartTime = activeQuiz.quizStartTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
-    const elapsedTime = currentTime - quizStartTime;
+    const elapsedTime = syncTime - quizStartTime;
     const questionIndex = Math.floor(elapsedTime / timePerQuestion);
     
     return Math.min(questionIndex, activeQuiz.questions.length - 1);
   }, [activeQuiz]);
 
-  // FIXED: Get time remaining with current time
+  // FIXED: Get time remaining with synchronized time
   const getTimeRemaining = useCallback(() => {
     if (!activeQuiz || !activeQuiz.quizStartTime) {
       return 0;
@@ -76,29 +90,30 @@ export const useQuizSync = (activeQuiz) => {
       return 0;
     }
 
-    // FIXED: Use current time for real-time countdown
-    const currentTime = Date.now();
+    // FIXED: Use synchronized time
+    const syncTime = getSyncTime();
     const quizStartTime = activeQuiz.quizStartTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
     const currentIndex = getCurrentQuestionIndex();
     const questionStartTime = quizStartTime + (currentIndex * timePerQuestion);
-    const timeLeft = (questionStartTime + timePerQuestion) - currentTime;
+    const timeLeft = (questionStartTime + timePerQuestion) - syncTime;
     
     return Math.max(0, Math.floor(timeLeft / 1000));
   }, [activeQuiz, getCurrentQuestionIndex]);
 
-  // FIXED: Check if quiz has ended
+  // FIXED: Check if quiz has ended with synchronized time
   const hasQuizEnded = useCallback(() => {
     if (!activeQuiz || !activeQuiz.questions || !activeQuiz.quizStartTime) {
       return false;
     }
 
-    const currentTime = Date.now();
+    // FIXED: Use synchronized time
+    const syncTime = getSyncTime();
     const quizStartTime = activeQuiz.quizStartTime;
     const totalQuizTime = activeQuiz.questions.length * (activeQuiz.timePerQuestion || 30) * 1000;
     
-    return (currentTime - quizStartTime) >= totalQuizTime;
+    return (syncTime - quizStartTime) >= totalQuizTime;
   }, [activeQuiz]);
 
   useEffect(() => {
@@ -122,7 +137,9 @@ export const useQuizSync = (activeQuiz) => {
         timeRemaining: remaining,
         quizEnded: ended,
         quizStatus: activeQuiz.status,
-        totalQuestions: activeQuiz.questions?.length
+        totalQuestions: activeQuiz.questions?.length,
+        timeSynced: isTimeSynced(),
+        timeOffset: timeOffset
       });
 
       setCurrentQuestionIndex(serverIndex);
@@ -154,7 +171,7 @@ export const useQuizSync = (activeQuiz) => {
       clearInterval(intervalRef.current);
     }
 
-    // FIXED: More frequent updates for better accuracy
+    // More frequent updates for better accuracy
     intervalRef.current = setInterval(updateQuizState, 500);
     updateQuizState();
 
@@ -163,7 +180,7 @@ export const useQuizSync = (activeQuiz) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded]);
+  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded, timeOffset]);
 
   return {
     currentQuestionIndex,

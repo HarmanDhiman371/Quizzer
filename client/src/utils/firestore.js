@@ -1754,3 +1754,70 @@ const saveCompleteQuizResults = async (quiz) => {
     throw error;
   }
 };
+// ==================== TIME SYNCHRONIZATION ====================
+
+// NEW: Get current server time from Firebase
+export const getServerTime = async () => {
+  try {
+    const serverTimeRef = doc(db, 'serverTime', 'current');
+    await setDoc(serverTimeRef, {
+      timestamp: serverTimestamp()
+    });
+    
+    const docSnap = await getDoc(serverTimeRef);
+    if (docSnap.exists()) {
+      const serverTime = docSnap.data().timestamp;
+      return serverTime.toDate().getTime(); // Convert to milliseconds
+    }
+    return Date.now(); // Fallback to client time
+  } catch (error) {
+    console.error('Error getting server time:', error);
+    return Date.now(); // Fallback to client time
+  }
+};
+
+// NEW: Calculate time offset between server and client
+export const calculateTimeOffset = async () => {
+  try {
+    const serverTime = await getServerTime();
+    const clientTime = Date.now();
+    const offset = serverTime - clientTime;
+    
+    console.log('⏰ Time synchronization:', {
+      serverTime: new Date(serverTime).toISOString(),
+      clientTime: new Date(clientTime).toISOString(), 
+      offset: `${offset}ms`,
+      offsetSeconds: `${(offset / 1000).toFixed(1)}s`
+    });
+    
+    return offset;
+  } catch (error) {
+    console.error('Error calculating time offset:', error);
+    return 0; // No offset if failed
+  }
+};
+
+// NEW: Get synchronized time (client time + offset)
+export const getSynchronizedTime = (offset = 0) => {
+  return Date.now() + offset;
+};
+
+// NEW: Update quiz start to use server time
+export const startQuizWithServerTime = async () => {
+  try {
+    const serverTime = await getServerTime();
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    
+    await updateDoc(activeQuizRef, {
+      status: 'active',
+      quizStartTime: serverTime, // Use server time instead of Date.now()
+      lastUpdated: serverTimestamp()
+    });
+    
+    console.log('✅ Quiz started with server time:', new Date(serverTime).toISOString());
+    return serverTime;
+  } catch (error) {
+    console.error('Error starting quiz with server time:', error);
+    throw error;
+  }
+};
