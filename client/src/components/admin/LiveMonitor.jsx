@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
-import { endActiveQuiz, listenToQuizResults, pauseQuiz, resumeQuiz, deleteClassResult } from '../../utils/firestore';
+import { endActiveQuiz, pauseQuiz, resumeQuiz, deleteClassResult, listenToQuizResults } from '../../utils/firestore';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 
@@ -12,17 +12,16 @@ const LiveMonitor = () => {
   const [visibleRange, setVisibleRange] = useState([0, 20]);
   const listRef = useRef();
 
-  // Function to manually start the quiz
+  // Function to manually start the quiz - KEEP ORIGINAL WORKING VERSION
   const handleStartQuiz = async () => {
     try {
       console.log('🎬 Admin manually starting quiz...');
       setLoading(true);
       
-      // Update quiz status from 'waiting' to 'active'
       const activeQuizRef = doc(db, 'activeQuiz', 'current');
       await updateDoc(activeQuizRef, {
         status: 'active',
-        quizStartTime: Date.now(), // Start now
+        quizStartTime: Date.now(),
         lastUpdated: serverTimestamp()
       });
       
@@ -36,7 +35,7 @@ const LiveMonitor = () => {
     }
   };
 
-  // Real-time listener for results - ONLY for current active quiz
+  // Real-time listener for results
   useEffect(() => {
     if (!activeQuiz?.id) {
       setResults([]);
@@ -48,12 +47,14 @@ const LiveMonitor = () => {
     const unsubscribe = listenToQuizResults(activeQuiz.id, (quizResults) => {
       console.log('📊 Real-time update:', quizResults.length, 'participants');
       
-      // Filter results to only include participants from current quiz session
-      const currentQuizResults = quizResults.filter(result => 
-        result.quizId === activeQuiz.id
-      );
+      const processedResults = quizResults.map(result => ({
+        ...result,
+        score: Number(result.score) || 0,
+        percentage: Number(result.percentage) || 0,
+        tabSwitches: Number(result.tabSwitches) || 0
+      }));
       
-      setResults(currentQuizResults);
+      setResults(processedResults);
       setLastUpdate(Date.now());
     });
 
@@ -69,7 +70,7 @@ const LiveMonitor = () => {
       if (!listRef.current) return;
       
       const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-      const itemHeight = 80; // Increased height for tab switch info
+      const itemHeight = 80;
       const startIndex = Math.floor(scrollTop / itemHeight);
       const endIndex = Math.min(
         startIndex + Math.ceil(clientHeight / itemHeight) + 5,
@@ -357,27 +358,37 @@ const LiveMonitor = () => {
     );
   }
 
-  // Remove duplicates and sort by score - only for current quiz
-  const uniqueParticipants = results
-    .filter((result, index, self) =>
-      index === self.findIndex(r => 
-        r.studentName === result.studentName && r.quizId === activeQuiz.id
-      )
-    )
-    .sort((a, b) => (b.score || 0) - (a.score || 0));
+  // Process participants with accurate scores and tab switches
+  const processParticipants = () => {
+    const uniqueParticipants = [];
+    const seenStudents = new Set();
+    
+    results.forEach(result => {
+      const studentKey = result.studentName;
+      
+      if (!seenStudents.has(studentKey)) {
+        seenStudents.add(studentKey);
+        uniqueParticipants.push({
+          ...result,
+          score: Number(result.score) || 0,
+          percentage: Number(result.percentage) || 0,
+          tabSwitches: Number(result.tabSwitches) || 0,
+          completedAt: result.completedAt || null
+        });
+      }
+    });
+    
+    // Sort by score descending, then by completion time
+    return uniqueParticipants.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.completedAt || 0) - (b.completedAt || 0);
+    });
+  };
 
-  // Real tab switch data from Firebase
-  let tabSwitchData = {};
-  uniqueParticipants.forEach(result => {
-    tabSwitchData[result.studentName] = {
-      count: result.tabSwitches || 0,
-      lastSwitch: result.lastActivity?.toDate?.() || null
-    };
-  });
-
-  const visibleParticipants = uniqueParticipants.slice(visibleRange[0], visibleRange[1]);
-  const itemHeight = 80; // Increased for tab switch info
-  const totalHeight = uniqueParticipants.length * itemHeight;
+  const participants = processParticipants();
+  const visibleParticipants = participants.slice(visibleRange[0], visibleRange[1]);
+  const itemHeight = 80;
+  const totalHeight = participants.length * itemHeight;
   const offsetY = visibleRange[0] * itemHeight;
 
   return (
@@ -420,7 +431,7 @@ const LiveMonitor = () => {
 
       <div className="live-stats">
         <div className="stat-card">
-          <div className="stat-value">{uniqueParticipants.length}</div>
+          <div className="stat-value">{participants.length}</div>
           <div className="stat-label">Participants</div>
         </div>
         <div className="stat-card">
@@ -446,9 +457,9 @@ const LiveMonitor = () => {
       </div>
 
       <div className="participants-list">
-        <h4>🏆 Live Ranking ({uniqueParticipants.length} participants)</h4>
+        <h4>🏆 Live Ranking ({participants.length} participants)</h4>
         
-        {uniqueParticipants.length === 0 ? (
+        {participants.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">👥</div>
             <p>No participants yet. Waiting for students to join...</p>
@@ -465,7 +476,8 @@ const LiveMonitor = () => {
               >
                 {visibleParticipants.map((result, index) => {
                   const globalIndex = visibleRange[0] + index;
-                  const tabSwitchInfo = tabSwitchData[result.studentName] || { count: 0, lastSwitch: null };
+                  const totalQuestions = activeQuiz.questions?.length || 1;
+                  const percentage = Math.round((result.score / totalQuestions) * 100);
                   
                   return (
                     <div 
@@ -479,12 +491,12 @@ const LiveMonitor = () => {
                          globalIndex === 2 ? '🥉' : `#${globalIndex + 1}`}
                       </span>
                       <span className="student">{result.studentName}</span>
-                      <span className="score">{result.score || 0}/{activeQuiz.questions?.length || 0}</span>
-                      <span className="percentage">{result.percentage || 0}%</span>
+                      <span className="score">{result.score}/{totalQuestions}</span>
+                      <span className="percentage">{percentage}%</span>
                       <span className="tab-switches">
-                        {tabSwitchInfo.count > 0 ? (
-                          <span className="tab-warning" title={`${tabSwitchInfo.count} tab switches detected`}>
-                            🔄 {tabSwitchInfo.count}
+                        {result.tabSwitches > 0 ? (
+                          <span className="tab-warning" title={`${result.tabSwitches} tab switches detected`}>
+                            🔄 {result.tabSwitches}
                           </span>
                         ) : (
                           <span className="tab-ok" title="No tab switches detected">

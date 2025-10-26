@@ -10,6 +10,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   const [joinTime, setJoinTime] = useState(Date.now());
   const [hasSavedFinal, setHasSavedFinal] = useState(false);
   const [quizStarted, setQuizStarted] = useState(false);
+  const [saveInProgress, setSaveInProgress] = useState(false);
   
   // Validate quiz data on component mount
   const validateQuizData = (quiz) => {
@@ -123,8 +124,9 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     }
   }, [activeQuiz]);
 
-  // Calculate score function with useCallback to prevent recreation
- // In QuizInterface.js - Fix the calculateScore function
+  // FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
+ // FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
+// FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
 const calculateScore = useCallback((currentAnswers) => {
   if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
     console.error('❌ Cannot calculate score: No questions available');
@@ -134,37 +136,30 @@ const calculateScore = useCallback((currentAnswers) => {
   const missedCount = calculateMissedQuestions(joinTime);
   let score = 0;
   
-  console.log('🔍 Calculating score:', {
-    totalQuestions: activeQuiz.questions.length,
-    missedCount: missedCount,
-    answers: currentAnswers
-  });
-  
+  // FIXED: Count ALL questions that have been answered correctly
+  // Don't skip questions based on missedCount for scoring
   activeQuiz.questions.forEach((question, index) => {
-    // Only count questions that weren't missed
-    if (index >= missedCount) {
-      const studentAnswer = currentAnswers[index] || '';
-      const correctAnswer = question.correctAnswer;
-      
-      console.log(`Q${index + 1}: Student: "${studentAnswer}", Correct: "${correctAnswer}", Match: ${studentAnswer === correctAnswer}`);
+    // Only count if student has answered this question
+    if (index < currentAnswers.length && currentAnswers[index]) {
+      const studentAnswer = currentAnswers[index].trim();
+      const correctAnswer = question.correctAnswer.trim();
       
       if (studentAnswer === correctAnswer) {
         score++;
       }
-    } else {
-      console.log(`Q${index + 1}: Missed due to late join`);
     }
   });
   
   console.log('🎯 Final score:', score);
   return score;
-}, [activeQuiz, joinTime, calculateMissedQuestions]);
+}, [activeQuiz, joinTime, calculateMissedQuestions, currentQuestionIndex]);
 
   // Initialize answers only once
   useEffect(() => {
     if (activeQuiz && activeQuiz.questions && activeQuiz.questions.length > 0 && answers.length === 0) {
       const initialAnswers = new Array(activeQuiz.questions.length).fill('');
       setAnswers(initialAnswers);
+      console.log('📝 Initialized answers array with length:', initialAnswers.length);
     }
   }, [activeQuiz, answers.length]);
 
@@ -174,18 +169,26 @@ const calculateScore = useCallback((currentAnswers) => {
     setSelectedAnswer(currentAnswer || '');
   }, [currentQuestionIndex, answers]);
 
-  // Handle answer selection
+  // FIXED: Handle answer selection with proper saving
   const handleAnswerSelect = async (answer) => {
-    if (quizStatus !== 'active' || !quizStarted) return;
+    if (quizStatus !== 'active' || !quizStarted || saveInProgress) return;
     
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = answer;
+    setSaveInProgress(true);
     
-    setAnswers(newAnswers);
-    setSelectedAnswer(answer);
-
-    // Save progress to Firebase
     try {
+      const newAnswers = [...answers];
+      newAnswers[currentQuestionIndex] = answer;
+      
+      setAnswers(newAnswers);
+      setSelectedAnswer(answer);
+
+      console.log('📝 Answer selected:', {
+        question: currentQuestionIndex + 1,
+        answer: answer,
+        answersArray: newAnswers
+      });
+
+      // Save progress to Firebase
       const score = calculateScore(newAnswers);
       await saveOrUpdateQuizResult({
         studentName: studentName,
@@ -199,49 +202,64 @@ const calculateScore = useCallback((currentAnswers) => {
         currentQuestionIndex: currentQuestionIndex,
         completedAt: null
       });
+      
+      console.log('💾 Answer saved for question:', currentQuestionIndex + 1, 'Score:', score);
     } catch (error) {
       console.error('❌ Error saving progress:', error);
+    } finally {
+      setSaveInProgress(false);
     }
   };
 
-  // Handle quiz completion
-  // Handle quiz completion - FIXED to prevent multiple saves
-useEffect(() => {
-  if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted) {
-    const finalScore = calculateScore(answers);
-    
-    // Set hasSavedFinal immediately to prevent multiple calls
-    setHasSavedFinal(true);
-    
-    saveOrUpdateQuizResult({
-      studentName: studentName,
-      score: finalScore,
-      totalQuestions: activeQuiz.questions.length,
-      percentage: Math.round((finalScore / activeQuiz.questions.length) * 100),
-      quizId: activeQuiz.id,
-      quizName: activeQuiz.name,
-      joinTime: joinTime,
-      answers: answers,
-      completedAt: Date.now()
-    }).then(() => {
-      console.log('✅ Final result saved for:', studentName);
-      onQuizComplete(finalScore);
-    }).catch(error => {
-      console.error('❌ Error saving final result:', error);
-      onQuizComplete(finalScore);
-    });
-  }
-}, [
-  quizStatus, 
-  hasSavedFinal, 
-  activeQuiz, 
-  answers, 
-  studentName, 
-  joinTime, 
-  onQuizComplete,
-  calculateScore,
-  quizStarted
-]);
+  // FIXED: Handle quiz completion with single save guarantee
+  useEffect(() => {
+    const completeQuiz = async () => {
+      if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted && !saveInProgress) {
+        console.log('🏁 Quiz completed, saving final result...');
+        
+        setSaveInProgress(true);
+        setHasSavedFinal(true);
+        
+        try {
+          const finalScore = calculateScore(answers);
+          
+          await saveOrUpdateQuizResult({
+            studentName: studentName,
+            score: finalScore,
+            totalQuestions: activeQuiz.questions.length,
+            percentage: Math.round((finalScore / activeQuiz.questions.length) * 100),
+            quizId: activeQuiz.id,
+            quizName: activeQuiz.name,
+            joinTime: joinTime,
+            answers: answers,
+            completedAt: Date.now()
+          });
+          
+          console.log('✅ Final result saved for:', studentName, 'Score:', finalScore);
+          onQuizComplete(finalScore);
+        } catch (error) {
+          console.error('❌ Error saving final result:', error);
+          const finalScore = calculateScore(answers);
+          onQuizComplete(finalScore);
+        } finally {
+          setSaveInProgress(false);
+        }
+      }
+    };
+
+    completeQuiz();
+  }, [
+    quizStatus, 
+    hasSavedFinal, 
+    activeQuiz, 
+    quizStarted, 
+    saveInProgress,
+    answers, 
+    studentName, 
+    joinTime, 
+    onQuizComplete,
+    calculateScore
+  ]);
 
   // Check if current question was missed
   const isQuestionMissed = currentQuestionIndex < calculateMissedQuestions(joinTime);
@@ -408,7 +426,7 @@ useEffect(() => {
                   key={index}
                   className={`option-btn ${selectedAnswer === option ? 'selected' : ''}`}
                   onClick={() => handleAnswerSelect(option)}
-                  disabled={quizStatus !== 'active'}
+                  disabled={quizStatus !== 'active' || saveInProgress}
                 >
                   <span className="option-label">
                     {String.fromCharCode(65 + index)}
@@ -429,6 +447,7 @@ useEffect(() => {
               <div className="answer-confirmation">
                 <span className="confirmation-icon">✅</span>
                 <span>Answer saved! Waiting for next question...</span>
+                {saveInProgress && <span className="saving-indicator"> (Saving...)</span>}
               </div>
             )}
           </>

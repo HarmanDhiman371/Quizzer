@@ -18,25 +18,26 @@ const StudentQuiz = () => {
   const [joiningQuiz, setJoiningQuiz] = useState(null);
 
   // Fetch ALL scheduled quizzes
-  useEffect(() => {
-    const loadScheduledQuizzes = async () => {
-      try {
-        setLoadingScheduled(true);
-        const quizzes = await getAllScheduledQuizzes();
-        setScheduledQuizzes(quizzes);
-      } catch (error) {
-        console.error('Error loading scheduled quizzes:', error);
-        setScheduledQuizzes([]);
-      } finally {
-        setLoadingScheduled(false);
-      }
-    };
+ // Fetch ALL scheduled quizzes - FIXED with better refresh
+useEffect(() => {
+  const loadScheduledQuizzes = async () => {
+    try {
+      setLoadingScheduled(true);
+      const quizzes = await getAllScheduledQuizzes();
+      console.log('📅 Refreshed scheduled quizzes:', quizzes.length, quizzes);
+      setScheduledQuizzes(quizzes);
+    } catch (error) {
+      console.error('Error loading scheduled quizzes:', error);
+      setScheduledQuizzes([]);
+    } finally {
+      setLoadingScheduled(false);
+    }
+  };
 
-    loadScheduledQuizzes();
-    const interval = setInterval(loadScheduledQuizzes, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
+  loadScheduledQuizzes();
+  const interval = setInterval(loadScheduledQuizzes, 10000);
+  return () => clearInterval(interval);
+}, []);
   // Handle quiz state transitions
   useEffect(() => {
     if (!activeQuiz || !studentName.trim()) return;
@@ -139,35 +140,42 @@ const StudentQuiz = () => {
     setQuizStarted(true);
   };
 
-  const handleQuizComplete = async (score) => {
-    console.log('🏁 Quiz Complete');
+ // FIXED: Handle quiz completion with consistent quiz ID
+const handleQuizComplete = async (score) => {
+  console.log('🏁 Quiz Complete - Fixing result mismatch');
 
-    const numericScore = Number(score) || 0;
-    setFinalScore(numericScore);
-    setQuizCompleted(true);
-    setQuizStarted(false);
+  const numericScore = Number(score) || 0;
+  setFinalScore(numericScore);
+  setQuizCompleted(true);
+  setQuizStarted(false);
 
-    try {
-      if (activeQuiz && validateQuizData(activeQuiz)) {
-        const totalQuestions = activeQuiz.questions?.length || 0;
-        const percentage = totalQuestions > 0 ? Math.round((numericScore / totalQuestions) * 100) : 0;
+  try {
+    if (activeQuiz && validateQuizData(activeQuiz)) {
+      const totalQuestions = activeQuiz.questions?.length || 0;
+      const percentage = totalQuestions > 0 ? Math.round((numericScore / totalQuestions) * 100) : 0;
 
-        const result = {
-          studentName: studentName.trim(),
-          score: numericScore,
-          totalQuestions: totalQuestions,
-          percentage: percentage,
-          quizId: activeQuiz.id,
-          quizName: activeQuiz.name,
-          completedAt: Date.now()
-        };
+      // FIX: Use consistent quiz ID (originalQuizId for scheduled quizzes)
+      const quizIdToUse = activeQuiz.originalQuizId || activeQuiz.id;
+      
+      const result = {
+        studentName: studentName.trim(),
+        score: numericScore,
+        totalQuestions: totalQuestions,
+        percentage: percentage,
+        quizId: quizIdToUse, // Use consistent ID
+        quizName: activeQuiz.name,
+        quizClass: activeQuiz.class,
+        completedAt: Date.now(),
+        joinTime:  Date.now()
+      };
 
-        await saveOrUpdateQuizResult(result);
-      }
-    } catch (error) {
-      console.error('❌ Error saving result:', error);
+      console.log('💾 Saving result with quiz ID:', quizIdToUse);
+      await saveOrUpdateQuizResult(result);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error saving result:', error);
+  }
+};
 
   const handleRetakeQuiz = () => {
     setQuizCompleted(false);
@@ -175,13 +183,14 @@ const StudentQuiz = () => {
   };
 
   // Check if quiz is ready to join
-  const isQuizReadyToJoin = (quiz) => {
-    const isScheduledOrActivated = quiz.status === 'scheduled' || quiz.status === 'activated';
-    const noActiveQuiz = !activeQuiz || activeQuiz.status === 'inactive';
-    const isValidQuiz = validateQuizData(quiz);
+ const isQuizReadyToJoin = (quiz) => {
+  const isScheduledOrActivated = quiz.status === 'scheduled' || quiz.status === 'activated';
+  const noActiveQuiz = !activeQuiz || activeQuiz.status === 'inactive';
+  const isValidQuiz = validateQuizData(quiz);
+  const isNotCompleted = quiz.status !== 'completed'; // NEW: Exclude completed quizzes
 
-    return isScheduledOrActivated && noActiveQuiz && isValidQuiz;
-  };
+  return isScheduledOrActivated && noActiveQuiz && isValidQuiz && isNotCompleted;
+};
 
   // Check if quiz is activated but waiting
   const isQuizActivated = (quiz) => {
@@ -576,7 +585,7 @@ if (quizCompleted && activeQuiz) {
         }
 
         .portal-input {
-          width: 100%;
+          // width: 100%;
           padding: 15px 20px;
           border: 2px solid #e9ecef;
           border-radius: 12px;
@@ -1101,7 +1110,8 @@ if (quizCompleted && activeQuiz) {
   font-size: 1rem;
 }
   // Add this to the StudentQuiz.js styles section
-.active-quiz-section {
+/* Add this to the main style section instead of separate blocks */
+.quiz-portal-active {
   min-height: 100vh;
   background: linear-gradient(135deg, #023e8a 0%, #0077b6 100%);
   padding: 40px 20px;
@@ -1110,7 +1120,7 @@ if (quizCompleted && activeQuiz) {
   justify-content: center;
 }
 
-.active-quiz-container {
+.quiz-portal-container {
   max-width: 600px;
   width: 100%;
 }

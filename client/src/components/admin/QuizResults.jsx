@@ -11,7 +11,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
   const totalQuestions = activeQuiz?.questions?.length || 0;
   const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
   
-  // Calculate user rank from all participants
+  // FIXED: Calculate user rank from current quiz only
   useEffect(() => {
     const calculateRank = async () => {
       if (!activeQuiz?.id) {
@@ -20,16 +20,33 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
       }
 
       try {
-        // Get all results for this quiz
+        // Get results only for current quiz
         const results = await getQuizResultsFromFirestore(activeQuiz.id);
-        setAllResults(results);
+        console.log(`📊 Loaded ${results.length} results for quiz: ${activeQuiz.id}`);
+        
+        // Filter out any potential duplicates
+        const uniqueResults = [];
+        const seenStudents = new Set();
+        
+        results.forEach(result => {
+          const studentKey = result.studentName;
+          if (!seenStudents.has(studentKey)) {
+            seenStudents.add(studentKey);
+            uniqueResults.push({
+              ...result,
+              score: Number(result.score) || 0,
+              percentage: Number(result.percentage) || 0
+            });
+          }
+        });
+        
+        setAllResults(uniqueResults);
 
-        // Sort results by score (descending) and time (ascending for tie-breaker)
-        const sortedResults = results.sort((a, b) => {
+        // Sort results by score (descending) and completion time (ascending for tie-breaker)
+        const sortedResults = uniqueResults.sort((a, b) => {
           if (b.score !== a.score) {
             return b.score - a.score;
           }
-          // If scores are equal, earlier completion gets better rank
           return (a.completedAt || 0) - (b.completedAt || 0);
         });
 
@@ -40,6 +57,9 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
         
         if (userIndex !== -1) {
           setUserRank(userIndex + 1);
+        } else {
+          // If user not found in results, add them
+          setUserRank(sortedResults.length + 1);
         }
 
         // Get top 5 rankings - use safe totalQuestions
@@ -59,7 +79,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
     };
 
     calculateRank();
-  }, [activeQuiz?.id, studentName, totalQuestions]); // Added totalQuestions to dependencies
+  }, [activeQuiz?.id, studentName, totalQuestions]);
 
   const getPerformanceMessage = () => {
     if (totalQuestions === 0) return "Assessment Complete! 📝";
@@ -361,7 +381,7 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
         {/* Top 5 Rankings Section */}
         {!loading && topRankings.length > 0 && (
           <div className="top-rankings-section">
-            <h3>🏆 Top 5 Performers</h3>
+            <h3>🏆 Top 5 Performers - {activeQuiz.name}</h3>
             <div className="rankings-list">
               {topRankings.map((result, index) => (
                 <div key={result.id || index} className={`ranking-item ${result.studentName === studentName ? 'current-user' : ''}`}>
@@ -493,7 +513,6 @@ const QuizResults = ({ score, activeQuiz, studentName, onRetake }) => {
           opacity: 0.8;
         }
 
-        /* Add the rest of your existing QuizResults CSS here */
         .score-total {
           font-size: 1rem;
           opacity: 0.9;

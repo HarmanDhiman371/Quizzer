@@ -1,36 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { getAllClassResults, deleteClassResult } from '../../utils/firestore';
+import AdminCompleteResults from './AdminCompleteResults';
 
 const ResultsManager = () => {
   const [classResults, setClassResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState('all');
   const [deletingId, setDeletingId] = useState(null);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [showCompleteResults, setShowCompleteResults] = useState(false);
+  const [alertMessage, setAlertMessage] = useState(null);
+  const [alertType, setAlertType] = useState('info');
 
   useEffect(() => {
     loadClassResults();
   }, []);
 
+  const showAlert = (message, type = 'info') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setTimeout(() => {
+      setAlertMessage(null);
+    }, 5000);
+  };
+
+  // FIXED: Enhanced load function with better state management
   const loadClassResults = async () => {
     try {
       setLoading(true);
       const results = await getAllClassResults();
       
-      // Filter out duplicate results (same quizId and quizName)
+      console.log('📊 Raw results from Firestore:', results.length, results);
+      
+      // FIXED: Better duplicate filtering
       const uniqueResults = results.reduce((acc, current) => {
-        const existing = acc.find(item => 
+        const existingIndex = acc.findIndex(item => 
           item.quizId === current.quizId && 
           item.quizName === current.quizName
         );
-        if (!existing) {
+        
+        if (existingIndex === -1) {
           acc.push(current);
         } else {
-          // Keep the most recent result if duplicates exist
-          const existingDate = existing.completedAt?.toDate?.() || new Date(0);
+          // Keep the most recent result
+          const existingDate = acc[existingIndex].completedAt?.toDate?.() || new Date(0);
           const currentDate = current.completedAt?.toDate?.() || new Date(0);
           if (currentDate > existingDate) {
-            const index = acc.indexOf(existing);
-            acc[index] = current;
+            acc[existingIndex] = current;
           }
         }
         return acc;
@@ -43,14 +59,27 @@ const ResultsManager = () => {
         return dateB - dateA;
       });
       
+      console.log('📊 Filtered results:', uniqueResults.length, uniqueResults);
       setClassResults(uniqueResults);
     } catch (error) {
       console.error('Error loading class results:', error);
+      showAlert('Error loading results: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleViewCompleteResults = (quiz) => {
+    setSelectedQuiz(quiz);
+    setShowCompleteResults(true);
+  };
+
+  const handleBackToResults = () => {
+    setShowCompleteResults(false);
+    setSelectedQuiz(null);
+  };
+
+  // FIXED: Enhanced delete with immediate UI update
   const handleDeleteResult = async (resultId, quizName) => {
     if (!window.confirm(`Are you sure you want to delete results for "${quizName}"? This action cannot be undone.`)) {
       return;
@@ -58,11 +87,23 @@ const ResultsManager = () => {
 
     setDeletingId(resultId);
     try {
+      // FIXED: Immediate UI update before Firestore operation
+      const resultToDelete = classResults.find(result => result.id === resultId);
+      if (resultToDelete) {
+        setClassResults(prev => prev.filter(result => result.id !== resultId));
+      }
+      
       await deleteClassResult(resultId);
-      await loadClassResults(); // Reload the list
+      showAlert(`✅ Results for "${quizName}" have been deleted successfully!`, 'success');
+      
+      // FIXED: Reload to ensure consistency, but UI is already updated
+      await loadClassResults();
+      
     } catch (error) {
       console.error('Error deleting result:', error);
-      alert('Error deleting result: ' + error.message);
+      showAlert(`❌ Failed to delete results: ${error.message}`, 'error');
+      // FIXED: Reload to restore correct state if delete failed
+      await loadClassResults();
     } finally {
       setDeletingId(null);
     }
@@ -75,6 +116,21 @@ const ResultsManager = () => {
   const filteredResults = selectedClass === 'all' 
     ? classResults 
     : classResults.filter(result => result.quizClass === selectedClass);
+
+  // If showing complete results, render that component
+  if (showCompleteResults && selectedQuiz) {
+    return (
+      <div className="results-manager">
+        <div className="results-header">
+          <button onClick={handleBackToResults} className="btn btn-secondary">
+            ← Back to Results
+          </button>
+          <h3>👑 Complete Results - {selectedQuiz.quizName}</h3>
+        </div>
+        <AdminCompleteResults quiz={selectedQuiz} />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -89,6 +145,19 @@ const ResultsManager = () => {
 
   return (
     <div className="results-manager">
+      {/* Alert message display */}
+      {alertMessage && (
+        <div className={`alert alert-${alertType}`}>
+          {alertMessage}
+          <button 
+            onClick={() => setAlertMessage(null)} 
+            className="alert-close"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="results-header">
         <h3>🏆 Quiz Results & Rankings</h3>
         <div className="results-actions">
@@ -123,13 +192,22 @@ const ResultsManager = () => {
                   <h4>{result.quizName}</h4>
                   <span className="class-badge">{result.quizClass}</span>
                 </div>
-                <button
-                  onClick={() => handleDeleteResult(result.id, result.quizName)}
-                  disabled={deletingId === result.id}
-                  className="btn btn-danger btn-sm"
-                >
-                  {deletingId === result.id ? 'Deleting...' : '🗑️ Delete'}
-                </button>
+                <div className="header-actions">
+                  <button
+                    onClick={() => handleViewCompleteResults(result)}
+                    className="btn btn-info btn-sm"
+                    title="View all participants and detailed results"
+                  >
+                    👑 View All
+                  </button>
+                  <button
+                    onClick={() => handleDeleteResult(result.id, result.quizName)}
+                    disabled={deletingId === result.id}
+                    className="btn btn-danger btn-sm"
+                  >
+                    {deletingId === result.id ? '🗑️ Deleting...' : '🗑️ Delete'}
+                  </button>
+                </div>
               </div>
               
               <div className="result-meta">
@@ -153,8 +231,8 @@ const ResultsManager = () => {
                     {result.topRankings.map((ranking, index) => (
                       <div key={`${result.id}-${index}`} className="ranking-item">
                         <span className="rank-position">
-                          {index === 0 ? '🥇' : 
-                           index === 1 ? '🥈' : 
+                          {index === 0 ? '🥇' :
+                           index === 1 ? '🥈' :
                            index === 2 ? '🥉' : `#${index + 1}`}
                         </span>
                         <span className="student-name">{ranking.studentName}</span>
@@ -166,6 +244,9 @@ const ResultsManager = () => {
                         </span>
                       </div>
                     ))}
+                  </div>
+                  <div className="view-all-hint">
+                    💡 Click "View All" to see complete participant list
                   </div>
                 </div>
               ) : (
@@ -181,6 +262,48 @@ const ResultsManager = () => {
       <style jsx>{`
         .results-manager {
           padding: 0;
+        }
+
+        .alert {
+          padding: 12px 16px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          position: relative;
+        }
+
+        .alert-success {
+          background: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+          background: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+          background: #d1ecf1;
+          color: #0c5460;
+          border: 1px solid #bee5eb;
+        }
+
+        .alert-close {
+          background: none;
+          border: none;
+          font-size: 1.2rem;
+          cursor: pointer;
+          margin-left: auto;
+          padding: 0;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .results-header {
@@ -235,6 +358,7 @@ const ResultsManager = () => {
           justify-content: space-between;
           align-items: flex-start;
           margin-bottom: 15px;
+          gap: 10px;
         }
 
         .header-left h4 {
@@ -250,6 +374,12 @@ const ResultsManager = () => {
           border-radius: 15px;
           font-size: 0.8rem;
           font-weight: 600;
+        }
+
+        .header-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
         .result-meta {
@@ -327,6 +457,17 @@ const ResultsManager = () => {
           font-weight: 600;
         }
 
+        .view-all-hint {
+          text-align: center;
+          padding: 10px;
+          background: rgba(255, 193, 7, 0.1);
+          border: 1px solid rgba(255, 193, 7, 0.3);
+          border-radius: 8px;
+          color: #856404;
+          font-size: 0.8rem;
+          margin-top: 15px;
+        }
+
         .no-rankings {
           text-align: center;
           padding: 20px;
@@ -386,6 +527,15 @@ const ResultsManager = () => {
           background: #5a6268;
         }
 
+        .btn-info {
+          background: #17a2b8;
+          color: white;
+        }
+
+        .btn-info:hover {
+          background: #138496;
+        }
+
         .btn-danger {
           background: #dc3545;
           color: white;
@@ -423,6 +573,10 @@ const ResultsManager = () => {
             flex-direction: column;
             gap: 10px;
           }
+
+          .header-actions {
+            justify-content: flex-start;
+          }
         }
 
         @media (max-width: 480px) {
@@ -453,6 +607,15 @@ const ResultsManager = () => {
 
           .percentage-badge {
             order: 4;
+          }
+
+          .header-actions {
+            flex-direction: column;
+            width: 100%;
+          }
+
+          .header-actions .btn {
+            width: 100%;
           }
         }
       `}</style>
