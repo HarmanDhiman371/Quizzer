@@ -7,6 +7,7 @@ export const useQuizSync = (activeQuiz) => {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [quizStatus, setQuizStatus] = useState('waiting');
   const [timeOffset, setTimeOffset] = useState(0);
+  const [timeSyncReady, setTimeSyncReady] = useState(false); // NEW: Sync ready state
   const intervalRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -15,8 +16,11 @@ export const useQuizSync = (activeQuiz) => {
     
     // Initialize time synchronization
     const initTimeSync = async () => {
+      console.log('🕒 Initializing time synchronization for quiz...');
       const offset = await initializeTimeSync();
       setTimeOffset(offset);
+      setTimeSyncReady(true); // MARK SYNC AS READY
+      console.log('✅ Time synchronization ready. Offset:', offset, 'ms');
     };
     
     initTimeSync();
@@ -117,7 +121,8 @@ export const useQuizSync = (activeQuiz) => {
   }, [activeQuiz]);
 
   useEffect(() => {
-    if (!activeQuiz || !mountedRef.current) {
+    // FIXED: Wait for time synchronization to be ready
+    if (!activeQuiz || !mountedRef.current || !timeSyncReady) {
       setQuizStatus('waiting');
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -139,7 +144,8 @@ export const useQuizSync = (activeQuiz) => {
         quizStatus: activeQuiz.status,
         totalQuestions: activeQuiz.questions?.length,
         timeSynced: isTimeSynced(),
-        timeOffset: timeOffset
+        timeOffset: timeOffset,
+        timeSyncReady: timeSyncReady // NEW: Log sync status
       });
 
       setCurrentQuestionIndex(serverIndex);
@@ -180,7 +186,7 @@ export const useQuizSync = (activeQuiz) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded, timeOffset]);
+  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded, timeOffset, timeSyncReady]); // ADDED: timeSyncReady
 
   return {
     currentQuestionIndex,
