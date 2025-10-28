@@ -215,59 +215,60 @@ const parseDesktopFormat = (blocks, errorCount) => {
 };
 
 // Mobile format parser (handles single line breaks)
+// Enhanced Mobile format parser
 const parseMobileFormat = (text) => {
   const questions = [];
   const lines = text.split('\n').filter(line => line.trim());
-  let currentQuestion = null;
-  let options = [];
-  let optionCount = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    // Detect new question (starts with number or no prefix)
-    if (!currentQuestion && line && !line.match(/^[A-D]\)/) && !line.toLowerCase().includes('correct:')) {
-      currentQuestion = line.replace(/^\d+[\.\)]\s*/, '');
-      options = [];
-      optionCount = 0;
-    }
-    // Detect options (A), B), C), D))
-    else if (currentQuestion && line.match(/^[A-D]\)/)) {
-      const option = line.replace(/^[A-D]\)\s*/, '').trim();
-      options.push(option);
-      optionCount++;
-    }
-    // Detect correct answer
-    else if (currentQuestion && line.toLowerCase().includes('correct:')) {
-      const correctMatch = line.match(/correct:\s*([A-D])/i);
-      if (correctMatch && options.length === 4) {
-        const correctLetter = correctMatch[1].toUpperCase();
-        const correctAnswer = options[correctLetter.charCodeAt(0) - 65];
+  
+  let i = 0;
+  while (i < lines.length) {
+    try {
+      // Look for a question line (not starting with A-D) and not a "Correct:" line)
+      if (lines[i] && 
+          !lines[i].match(/^[A-D]\)/) && 
+          !lines[i].toLowerCase().includes('correct:')) {
         
-        if (correctAnswer) {
-          questions.push({
-            question: currentQuestion,
-            options: options,
-            correctAnswer: correctAnswer
-          });
+        const question = lines[i].replace(/^\d+[\.\)]\s*/, '').trim();
+        i++;
+        
+        // Collect next 4 lines as options
+        const options = [];
+        for (let j = 0; j < 4 && i < lines.length; j++, i++) {
+          if (lines[i] && lines[i].match(/^[A-D]\)/)) {
+            const option = lines[i].replace(/^[A-D]\)\s*/, '').trim();
+            options.push(option);
+          } else {
+            break;
+          }
         }
         
-        // Reset for next question
-        currentQuestion = null;
-        options = [];
-        optionCount = 0;
+        // Look for correct answer in next line
+        if (i < lines.length && lines[i].toLowerCase().includes('correct:')) {
+          const correctMatch = lines[i].match(/correct:\s*([A-D])/i);
+          if (correctMatch && options.length === 4) {
+            const correctLetter = correctMatch[1].toUpperCase();
+            const correctAnswer = options[correctLetter.charCodeAt(0) - 65];
+            
+            if (correctAnswer) {
+              questions.push({
+                question,
+                options,
+                correctAnswer
+              });
+            }
+          }
+          i++; // Move past the correct line
+        }
+      } else {
+        i++; // Skip lines that don't look like questions
       }
-    }
-    // Handle case where we have a complete question but no correct answer line yet
-    else if (currentQuestion && optionCount === 4 && i === lines.length - 1) {
-      // Last line and we have a complete question without correct answer
-      console.warn('Question missing correct answer:', currentQuestion);
-      currentQuestion = null;
-      options = [];
-      optionCount = 0;
+    } catch (error) {
+      console.error('Error parsing mobile format question:', error);
+      i++;
     }
   }
-
+  
+  console.log(`📱 Mobile parser found ${questions.length} questions`);
   return questions;
 };
 
