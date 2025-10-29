@@ -2325,3 +2325,24 @@
   margin-bottom: 15px;
   text-align: center;
 }
+/* Passkey Input Styles */
+.input-hint {
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-top: 5px;
+  font-style: italic;
+}
+
+.passkey-preview {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 8px;
+  padding: 10px 15px;
+  margin-top: 15px;
+  color: #856404;
+  font-size: 0.9rem;
+}
+
+.passkey-preview strong {
+  color: #856404;
+}

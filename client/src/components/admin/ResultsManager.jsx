@@ -29,16 +29,16 @@ const ResultsManager = () => {
     try {
       setLoading(true);
       const results = await getAllClassResults();
-      
+
       console.log('📊 Raw results from Firestore:', results.length, results);
-      
+
       // FIXED: Better duplicate filtering
       const uniqueResults = results.reduce((acc, current) => {
-        const existingIndex = acc.findIndex(item => 
-          item.quizId === current.quizId && 
+        const existingIndex = acc.findIndex(item =>
+          item.quizId === current.quizId &&
           item.quizName === current.quizName
         );
-        
+
         if (existingIndex === -1) {
           acc.push(current);
         } else {
@@ -51,14 +51,14 @@ const ResultsManager = () => {
         }
         return acc;
       }, []);
-      
+
       // Sort by completion date (newest first)
       uniqueResults.sort((a, b) => {
         const dateA = a.completedAt?.toDate?.() || new Date(0);
         const dateB = b.completedAt?.toDate?.() || new Date(0);
         return dateB - dateA;
       });
-      
+
       console.log('📊 Filtered results:', uniqueResults.length, uniqueResults);
       setClassResults(uniqueResults);
     } catch (error) {
@@ -92,13 +92,13 @@ const ResultsManager = () => {
       if (resultToDelete) {
         setClassResults(prev => prev.filter(result => result.id !== resultId));
       }
-      
+
       await deleteClassResult(resultId);
       showAlert(`✅ Results for "${quizName}" have been deleted successfully!`, 'success');
-      
+
       // FIXED: Reload to ensure consistency, but UI is already updated
       await loadClassResults();
-      
+
     } catch (error) {
       console.error('Error deleting result:', error);
       showAlert(`❌ Failed to delete results: ${error.message}`, 'error');
@@ -113,8 +113,8 @@ const ResultsManager = () => {
   const uniqueClasses = [...new Set(classResults.map(result => result.quizClass))];
 
   // Filter results by selected class
-  const filteredResults = selectedClass === 'all' 
-    ? classResults 
+  const filteredResults = selectedClass === 'all'
+    ? classResults
     : classResults.filter(result => result.quizClass === selectedClass);
 
   // If showing complete results, render that component
@@ -149,8 +149,8 @@ const ResultsManager = () => {
       {alertMessage && (
         <div className={`alert alert-${alertType}`}>
           {alertMessage}
-          <button 
-            onClick={() => setAlertMessage(null)} 
+          <button
+            onClick={() => setAlertMessage(null)}
             className="alert-close"
           >
             ×
@@ -161,7 +161,7 @@ const ResultsManager = () => {
       <div className="results-header">
         <h3>🏆 Quiz Results & Rankings</h3>
         <div className="results-actions">
-          <select 
+          <select
             value={selectedClass}
             onChange={(e) => setSelectedClass(e.target.value)}
             className="class-filter"
@@ -209,7 +209,7 @@ const ResultsManager = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="result-meta">
                 <p className="completion-date">
                   Completed: {result.completedAt?.toDate?.()?.toLocaleString() || 'Unknown'}
@@ -224,6 +224,7 @@ const ResultsManager = () => {
                 )}
               </div>
 
+            // In ResultsManager.js - Update the rankings section
               {result.topRankings && result.topRankings.length > 0 ? (
                 <div className="top-rankings-section">
                   <h5>🏅 Top 5 Performers</h5>
@@ -232,8 +233,8 @@ const ResultsManager = () => {
                       <div key={`${result.id}-${index}`} className="ranking-item">
                         <span className="rank-position">
                           {index === 0 ? '🥇' :
-                           index === 1 ? '🥈' :
-                           index === 2 ? '🥉' : `#${index + 1}`}
+                            index === 1 ? '🥈' :
+                              index === 2 ? '🥉' : `#${index + 1}`}
                         </span>
                         <span className="student-name">{ranking.studentName}</span>
                         <span className="score-badge">
@@ -242,11 +243,21 @@ const ResultsManager = () => {
                         <span className="percentage-badge">
                           {ranking.percentage}%
                         </span>
+                        {/* 🟢 ADD THIS TAB SWITCH DISPLAY */}
+                        <div className="tab-info">
+                          {ranking.tabSwitches > 0 ? (
+                            <span className="tab-warning" title="Tab switches detected">
+                              🔄 {ranking.tabSwitches}
+                            </span>
+                          ) : (
+                            <span className="tab-ok">✅</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                   <div className="view-all-hint">
-                    💡 Click "View All" to see complete participant list
+                    💡 Click "View All" to see complete participant list with tab switch details
                   </div>
                 </div>
               ) : (
@@ -305,6 +316,30 @@ const ResultsManager = () => {
           align-items: center;
           justify-content: center;
         }
+          .tab-info {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.tab-warning {
+  background: #fff3cd;
+  color: #856404;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid #ffeaa7;
+}
+
+.tab-ok {
+  color: #28a745;
+  font-size: 0.8rem;
+  background: #d4edda;
+  padding: 4px 8px;
+  border-radius: 12px;
+  border: 1px solid #c3e6cb;
+}
 
         .results-header {
           display: flex;

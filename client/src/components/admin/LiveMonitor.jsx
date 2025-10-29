@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
-import { endActiveQuiz, pauseQuiz, resumeQuiz, deleteClassResult, listenToQuizResults } from '../../utils/firestore';
+import { endActiveQuiz, pauseQuiz, resumeQuiz, deleteClassResult, listenToQuizResults , listenToResultsWithTabSwitches } from '../../utils/firestore';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 
@@ -36,34 +36,44 @@ const LiveMonitor = () => {
   };
 
   // Real-time listener for results
-  useEffect(() => {
-    if (!activeQuiz?.id) {
-      setResults([]);
-      return;
-    }
+  // UPDATED: Real-time listener for results with tab switch support
+useEffect(() => {
+  if (!activeQuiz?.id) {
+    setResults([]);
+    return;
+  }
 
-    console.log('🎯 Setting up real-time listener for quiz:', activeQuiz.id);
+  console.log('🎯 Setting up real-time listener for quiz:', activeQuiz.id);
+  
+  const unsubscribe = listenToQuizResults(activeQuiz.id, (quizResults) => {
+    console.log('📊 Real-time update:', quizResults.length, 'participants');
     
-    const unsubscribe = listenToQuizResults(activeQuiz.id, (quizResults) => {
-      console.log('📊 Real-time update:', quizResults.length, 'participants');
-      
-      const processedResults = quizResults.map(result => ({
-        ...result,
-        score: Number(result.score) || 0,
-        percentage: Number(result.percentage) || 0,
-        tabSwitches: Number(result.tabSwitches) || 0
-      }));
-      
-      setResults(processedResults);
-      setLastUpdate(Date.now());
-    });
+    // ENHANCED: Process results with proper tab switch tracking
+    const processedResults = quizResults.map(result => ({
+      ...result,
+      score: Number(result.score) || 0,
+      percentage: Number(result.percentage) || 0,
+      tabSwitches: Number(result.tabSwitches) || 0,
+      // Ensure we have the latest tab switch data
+      lastTabUpdate: result.lastTabUpdate || null,
+      lastActivity: result.lastActivity || null
+    }));
+    
+    console.log('🔄 Tab switch data:', processedResults.map(r => ({
+      student: r.studentName,
+      tabSwitches: r.tabSwitches,
+      lastUpdate: r.lastTabUpdate
+    })));
+    
+    setResults(processedResults);
+    setLastUpdate(Date.now());
+  });
 
-    return () => {
-      console.log('🎯 Cleaning up real-time listener');
-      unsubscribe();
-    };
-  }, [activeQuiz?.id]);
-
+  return () => {
+    console.log('🎯 Cleaning up real-time listener');
+    unsubscribe();
+  };
+}, [activeQuiz?.id]);
   // Virtual scrolling handler
   useEffect(() => {
     const handleScroll = () => {

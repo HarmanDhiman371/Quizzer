@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuiz } from '../../contexts/QuizContext';
 import { parseMCQText } from '../../utils/mcqParser';
 import { saveQuizToFirestore, setActiveQuiz } from '../../utils/firestore';
-import Modal from '../alert/Modal'; // Import the Modal component
+import Modal from '../alert/Modal';
 
 const QuizCreator = () => {
   const { activeQuiz } = useQuiz();
@@ -12,6 +12,7 @@ const QuizCreator = () => {
   const [quizName, setQuizName] = useState('');
   const [quizClass, setQuizClass] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
+  const [passkey, setPasskey] = useState(''); // NEW: Passkey state
   const [isLoading, setIsLoading] = useState(false);
 
   // Modal state
@@ -51,6 +52,7 @@ const QuizCreator = () => {
       const parsedQuiz = parseMCQText(mcqText, timePerQuestion);
       parsedQuiz.name = quizName;
       parsedQuiz.class = quizClass;
+      parsedQuiz.passkey = passkey.trim(); // NEW: Add passkey to quiz
 
       if (scheduledTime) {
         parsedQuiz.scheduledTime = new Date(scheduledTime).getTime();
@@ -97,6 +99,7 @@ const QuizCreator = () => {
       setQuizName('');
       setQuizClass('');
       setScheduledTime('');
+      setPasskey(''); // NEW: Reset passkey
       setQuiz(null);
     } catch (error) {
       console.error('Error starting quiz:', error);
@@ -141,6 +144,7 @@ const QuizCreator = () => {
       setQuizName('');
       setQuizClass('');
       setScheduledTime('');
+      setPasskey(''); // NEW: Reset passkey
       setQuiz(null);
     } catch (error) {
       console.error('Error scheduling quiz:', error);
@@ -175,7 +179,7 @@ const QuizCreator = () => {
       {/* Show warning if there's an active quiz */}
       {hasActiveQuiz && (
         <div className="active-quiz-warning">
-          <span>⚠️ There is an active quiz running. End it first to start a new one.</span>
+          <span>⚠️ There is already an active quiz running. End it first to start a new one.</span>
         </div>
       )}
 
@@ -221,6 +225,20 @@ const QuizCreator = () => {
           </select>
         </div>
 
+        {/* NEW: Passkey Input Field */}
+        <div className="meta-group">
+          <label>Passkey (Optional)</label>
+          <input
+            type="text"
+            placeholder="Enter passkey for students"
+            value={passkey}
+            onChange={(e) => setPasskey(e.target.value)}
+            maxLength={20}
+          />
+          <div className="input-hint">
+            💡 Students will need this passkey to join the quiz
+          </div>
+        </div>
 
         <div className="meta-group">
           <label>Schedule Start Time (optional)</label>
@@ -232,6 +250,7 @@ const QuizCreator = () => {
         </div>
       </div>
 
+      {/* Rest of the component remains the same */}
       <div className="mcq-input-section">
         <label>Paste MCQs (One question per block) *</label>
         <textarea
@@ -337,6 +356,12 @@ Correct: C`}
               </div>
             )}
           </div>
+          {/* NEW: Show passkey in preview */}
+          {quiz.passkey && (
+            <div className="passkey-preview">
+              <strong>🔑 Passkey:</strong> {quiz.passkey}
+            </div>
+          )}
         </div>
       )}
 

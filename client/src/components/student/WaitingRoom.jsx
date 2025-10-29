@@ -18,6 +18,32 @@ const WaitingRoom = ({ activeQuiz, studentName }) => {
     }
   }, [activeQuiz]);
 
+  // NEW: Auto-redirect when quiz starts and block late entries
+  // This is CORRECT - it only redirects when admin starts the quiz
+useEffect(() => {
+  if (!activeQuiz) return;
+
+  console.log('🔄 WaitingRoom - Quiz status:', activeQuiz.status);
+
+  // If quiz becomes active (because admin started it), redirect to quiz interface
+  if (activeQuiz.status === 'active') {
+    console.log('🎬 Quiz started by admin! Redirecting from waiting room...');
+    
+    const redirectTimer = setTimeout(() => {
+      window.location.reload();
+    }, 2000);
+    
+    return () => clearTimeout(redirectTimer);
+  }
+}, [activeQuiz, isVisible]);
+
+  const getStatusMessage = () => {
+    if (activeQuiz.status === 'active') {
+      return '🎬 Quiz is starting... Redirecting now!';
+    }
+    return 'Waiting for quiz to start...';
+  };
+
   if (!activeQuiz) {
     return (
       <div className="loading-container">
@@ -56,7 +82,7 @@ const WaitingRoom = ({ activeQuiz, studentName }) => {
           <p>You've joined the waiting room. The quiz will begin shortly when the admin starts the session.</p>
           <div className="status-indicator">
             <div className="pulse-dot"></div>
-            <span>Waiting for quiz to start...</span>
+            <span>{getStatusMessage()}</span>
           </div>
         </div>
 

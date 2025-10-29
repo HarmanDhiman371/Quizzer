@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useQuizSync } from '../../hooks/useQuizSync';
 import { saveOrUpdateQuizResult } from '../../utils/firestore';
 import { getSyncTime, initializeTimeSync } from '../../utils/timeSync';
+import { useTabVisibility } from '../../hooks/useTabVisibility'; // ✅ FIXED: Import the hook
 
 import Timer from '../shared/Timer';
 import './quiz.css';
@@ -14,7 +15,9 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
   const [quizStarted, setQuizStarted] = useState(false);
   const [saveInProgress, setSaveInProgress] = useState(false);
   
-  // Validate quiz data on component mount
+  // ✅ FIXED: Tab visibility hook
+  const quizId = activeQuiz?.originalQuizId || activeQuiz?.id;
+  const { isVisible, switchCount } = useTabVisibility(quizId, studentName);
   const validateQuizData = (quiz) => {
     console.log('🔍 Validating quiz data:', {
       hasQuiz: !!quiz,
@@ -62,6 +65,16 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     return true;
   };
 
+  // ✅ FIXED: Debug logging for tab visibility
+  useEffect(() => {
+    console.log('🎯 Tab Visibility Status:', { 
+      isVisible, 
+      switchCount,
+      quizId,
+      studentName 
+    });
+  }, [isVisible, switchCount, quizId, studentName]);
+
   const {
     currentQuestionIndex,
     timeRemaining,
@@ -69,11 +82,10 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     calculateMissedQuestions
   } = useQuizSync(activeQuiz);
 
-  // Start quiz immediately when component mounts for active quiz
-   useEffect(() => {
+  // ✅ FIXED: Removed unnecessary dependencies
+  useEffect(() => {
     const initTimeSync = async () => {
       await initializeTimeSync();
-      // FIXED: Use synchronized time for join time
       const syncJoinTime = getSyncTime();
       setJoinTime(syncJoinTime);
       console.log('⏰ Student joined with synchronized time:', new Date(syncJoinTime).toISOString());
@@ -83,7 +95,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
       setQuizStarted(true);
       initTimeSync();
     }
-  }, [activeQuiz , initializeTimeSync , getSyncTime]);
+  }, [activeQuiz]); // ✅ FIXED: Removed getSyncTime and initializeTimeSync
 
   // Copy protection effect
   useEffect(() => {
@@ -134,35 +146,32 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
     }
   }, [activeQuiz]);
 
-  // FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
- // FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
-// FIXED: Calculate score function - COUNT ALL ANSWERED QUESTIONS
-const calculateScore = useCallback((currentAnswers) => {
-  if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
-    console.error('❌ Cannot calculate score: No questions available');
-    return 0;
-  }
-  
-  const missedCount = calculateMissedQuestions(joinTime);
-  let score = 0;
-  
-  // FIXED: Count ALL questions that have been answered correctly
-  // Don't skip questions based on missedCount for scoring
-  activeQuiz.questions.forEach((question, index) => {
-    // Only count if student has answered this question
-    if (index < currentAnswers.length && currentAnswers[index]) {
-      const studentAnswer = currentAnswers[index].trim();
-      const correctAnswer = question.correctAnswer.trim();
-      
-      if (studentAnswer === correctAnswer) {
-        score++;
-      }
+  // ✅ FIXED: Removed unused variable and unnecessary dependency
+  const calculateScore = useCallback((currentAnswers) => {
+    if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
+      console.error('❌ Cannot calculate score: No questions available');
+      return 0;
     }
-  });
-  
-  console.log('🎯 Final score:', score);
-  return score;
-}, [activeQuiz, joinTime, calculateMissedQuestions, currentQuestionIndex]);
+    
+    // ✅ FIXED: Removed unused missedCount variable
+    let score = 0;
+    
+    // Count ALL questions that have been answered correctly
+    activeQuiz.questions.forEach((question, index) => {
+      // Only count if student has answered this question
+      if (index < currentAnswers.length && currentAnswers[index]) {
+        const studentAnswer = currentAnswers[index].trim();
+        const correctAnswer = question.correctAnswer.trim();
+        
+        if (studentAnswer === correctAnswer) {
+          score++;
+        }
+      }
+    });
+    
+    console.log('🎯 Final score:', score);
+    return score;
+  }, [activeQuiz, joinTime, calculateMissedQuestions]); // ✅ FIXED: Removed currentQuestionIndex
 
   // Initialize answers only once
   useEffect(() => {
@@ -179,7 +188,7 @@ const calculateScore = useCallback((currentAnswers) => {
     setSelectedAnswer(currentAnswer || '');
   }, [currentQuestionIndex, answers]);
 
-  // FIXED: Handle answer selection with proper saving
+  // Handle answer selection with proper saving
   const handleAnswerSelect = async (answer) => {
     if (quizStatus !== 'active' || !quizStarted || saveInProgress) return;
     
@@ -221,7 +230,7 @@ const calculateScore = useCallback((currentAnswers) => {
     }
   };
 
-  // FIXED: Handle quiz completion with single save guarantee
+  // Handle quiz completion with single save guarantee
   useEffect(() => {
     const completeQuiz = async () => {
       if (quizStatus === 'ended' && !hasSavedFinal && activeQuiz && quizStarted && !saveInProgress) {
@@ -280,6 +289,7 @@ const calculateScore = useCallback((currentAnswers) => {
       <div className="quiz-interface">
         <div className="quiz-error">
           <div className="error-icon">⚠️</div>
+          {/* ✅ FIXED: Added closing h3 tag */}
           <h3>Quiz Not Available</h3>
           <p>There seems to be an issue with the quiz data.</p>
           <p>Please contact your teacher.</p>
@@ -327,7 +337,6 @@ const calculateScore = useCallback((currentAnswers) => {
                 <li>📱 Do not refresh or leave the page</li>
                 <li>🎯 Answer carefully - you can't go back!</li>
                 <li>💡 Select your answer and it will be saved automatically</li>
-                <li>⚠️ You joined late - some questions may be marked as missed</li>
               </ul>
             </div>
 
@@ -401,11 +410,6 @@ const calculateScore = useCallback((currentAnswers) => {
         </div>
         <div className="progress-text">
           Progress: {currentQuestionIndex + 1}/{activeQuiz.questions.length} questions
-          {calculateMissedQuestions(joinTime) > 0 && (
-            <span className="missed-info">
-              (Missed: {calculateMissedQuestions(joinTime)} questions)
-            </span>
-          )}
         </div>
       </div>
 
@@ -468,11 +472,6 @@ const calculateScore = useCallback((currentAnswers) => {
       <div className="student-info">
         <div className="student-details">
           <span className="student-name">Student: {studentName}</span>
-          {calculateMissedQuestions(joinTime) > 0 && (
-            <span className="missed-count">
-              Missed: {calculateMissedQuestions(joinTime)} questions
-            </span>
-          )}
         </div>
         <div className="quiz-status-indicator">
           <span className={`status-dot ${quizStatus === 'active' ? 'active' : 'inactive'}`}></span>

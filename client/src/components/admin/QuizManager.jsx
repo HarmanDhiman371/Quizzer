@@ -79,39 +79,40 @@ const QuizManager = () => {
     }
   };
 
-  const handleStartQuiz = async (quiz) => {
-    try {
-      setStartingQuiz(quiz.id);
-      setCountdown(10);
+  // In QuizManager.js - The start function should remain as is
+const handleStartQuiz = async (quiz) => {
+  try {
+    setStartingQuiz(quiz.id);
+    setCountdown(10);
 
-      // For scheduled quizzes, use activate function
-      if (quiz.status === 'scheduled') {
-        await activateScheduledQuiz(quiz.id);
-      } else {
-        // For draft quizzes, use regular start
-        await setActiveQuiz(quiz);
-      }
-      
-      // Start the 10-second countdown
-      const countdownInterval = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            setStartingQuiz(null);
-            setCountdown(0);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (error) {
-      console.error('Error starting quiz:', error);
-      showAlertModal('Error', `Error starting quiz: ${error.message}`, 'error');
-      setStartingQuiz(null);
-      setCountdown(0);
+    // For scheduled quizzes, use activate function
+    if (quiz.status === 'scheduled') {
+      await activateScheduledQuiz(quiz.id); // This should set status to 'active'
+    } else {
+      // For draft quizzes, use regular start
+      await setActiveQuiz(quiz);
     }
-  };
+    
+    // Start the 10-second countdown
+    const countdownInterval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setStartingQuiz(null);
+          setCountdown(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+  } catch (error) {
+    console.error('Error starting quiz:', error);
+    showAlertModal('Error', `Error starting quiz: ${error.message}`, 'error');
+    setStartingQuiz(null);
+    setCountdown(0);
+  }
+};
 
   const handleDeleteQuiz = async (quizId, quizName) => {
     showConfirmModal(

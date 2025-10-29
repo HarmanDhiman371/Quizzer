@@ -7,7 +7,8 @@ export const useQuizSync = (activeQuiz) => {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [quizStatus, setQuizStatus] = useState('waiting');
   const [timeOffset, setTimeOffset] = useState(0);
-  const [timeSyncReady, setTimeSyncReady] = useState(false); // NEW: Sync ready state
+  const [timeSyncReady, setTimeSyncReady] = useState(false);
+  const [studentJoinTime, setStudentJoinTime] = useState(null); // NEW: Track when student actually joined
   const intervalRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -19,7 +20,11 @@ export const useQuizSync = (activeQuiz) => {
       console.log('🕒 Initializing time synchronization for quiz...');
       const offset = await initializeTimeSync();
       setTimeOffset(offset);
-      setTimeSyncReady(true); // MARK SYNC AS READY
+      setTimeSyncReady(true);
+      
+      // NEW: Set student join time AFTER sync is ready
+      setStudentJoinTime(getSyncTime());
+      
       console.log('✅ Time synchronization ready. Offset:', offset, 'ms');
     };
     
@@ -33,31 +38,23 @@ export const useQuizSync = (activeQuiz) => {
     };
   }, []);
 
-  // FIXED: Calculate missed questions with synchronized time
-  const calculateMissedQuestions = useCallback((studentJoinTime) => {
-    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
+  // FIXED: Calculate missed questions - only count questions missed AFTER student joined
+  const calculateMissedQuestions = useCallback((joinTime) => {
+    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions || !joinTime) {
       return 0;
     }
 
-    // FIXED: Use synchronized time for calculations
-    const syncTime = getSyncTime();
-    
-    // If student joined before quiz started, no questions missed
-    if (studentJoinTime <= activeQuiz.quizStartTime) {
-      return 0;
-    }
-
-    const timeLate = studentJoinTime - activeQuiz.quizStartTime;
+    // Only count time after student joined
+    const timeAfterJoin = Math.max(0, getSyncTime() - joinTime);
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
-    const missedCount = Math.floor(timeLate / timePerQuestion);
+    const missedCount = Math.floor(timeAfterJoin / timePerQuestion);
     
-    // Don't allow more missed questions than total questions
-    return Math.min(missedCount, activeQuiz.questions.length);
+    return Math.min(missedCount, activeQuiz.questions.length - 1); // Can't miss more than total-1
   }, [activeQuiz]);
 
-  // FIXED: Get current question index using synchronized time
+  // FIXED: Get current question index - based on time since student joined, not quiz start
   const getCurrentQuestionIndex = useCallback(() => {
-    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions) {
+    if (!activeQuiz || !activeQuiz.quizStartTime || !activeQuiz.questions || !studentJoinTime) {
       return 0;
     }
 
@@ -69,20 +66,18 @@ export const useQuizSync = (activeQuiz) => {
       return 0;
     }
 
-    // FIXED: Use synchronized time instead of client time
-    const syncTime = getSyncTime();
-    const quizStartTime = activeQuiz.quizStartTime;
+    // FIXED: Calculate based on time since STUDENT JOINED, not quiz start
+    const timeSinceJoin = getSyncTime() - studentJoinTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
-    const elapsedTime = syncTime - quizStartTime;
-    const questionIndex = Math.floor(elapsedTime / timePerQuestion);
+    const questionIndex = Math.floor(timeSinceJoin / timePerQuestion);
     
     return Math.min(questionIndex, activeQuiz.questions.length - 1);
-  }, [activeQuiz]);
+  }, [activeQuiz, studentJoinTime]);
 
-  // FIXED: Get time remaining with synchronized time
+  // FIXED: Get time remaining - based on student's personal timer
   const getTimeRemaining = useCallback(() => {
-    if (!activeQuiz || !activeQuiz.quizStartTime) {
+    if (!activeQuiz || !studentJoinTime) {
       return 0;
     }
 
@@ -94,35 +89,31 @@ export const useQuizSync = (activeQuiz) => {
       return 0;
     }
 
-    // FIXED: Use synchronized time
-    const syncTime = getSyncTime();
-    const quizStartTime = activeQuiz.quizStartTime;
+    const timeSinceJoin = getSyncTime() - studentJoinTime;
     const timePerQuestion = (activeQuiz.timePerQuestion || 30) * 1000;
     
     const currentIndex = getCurrentQuestionIndex();
-    const questionStartTime = quizStartTime + (currentIndex * timePerQuestion);
-    const timeLeft = (questionStartTime + timePerQuestion) - syncTime;
+    const questionStartTime = studentJoinTime + (currentIndex * timePerQuestion);
+    const timeLeft = (questionStartTime + timePerQuestion) - getSyncTime();
     
     return Math.max(0, Math.floor(timeLeft / 1000));
-  }, [activeQuiz, getCurrentQuestionIndex]);
+  }, [activeQuiz, getCurrentQuestionIndex, studentJoinTime]);
 
-  // FIXED: Check if quiz has ended with synchronized time
+  // FIXED: Check if quiz has ended for this student
   const hasQuizEnded = useCallback(() => {
-    if (!activeQuiz || !activeQuiz.questions || !activeQuiz.quizStartTime) {
+    if (!activeQuiz || !activeQuiz.questions || !studentJoinTime) {
       return false;
     }
 
-    // FIXED: Use synchronized time
-    const syncTime = getSyncTime();
-    const quizStartTime = activeQuiz.quizStartTime;
+    const timeSinceJoin = getSyncTime() - studentJoinTime;
     const totalQuizTime = activeQuiz.questions.length * (activeQuiz.timePerQuestion || 30) * 1000;
     
-    return (syncTime - quizStartTime) >= totalQuizTime;
-  }, [activeQuiz]);
+    return timeSinceJoin >= totalQuizTime;
+  }, [activeQuiz, studentJoinTime]);
 
   useEffect(() => {
-    // FIXED: Wait for time synchronization to be ready
-    if (!activeQuiz || !mountedRef.current || !timeSyncReady) {
+    // Wait for time synchronization AND student join time to be set
+    if (!activeQuiz || !mountedRef.current || !timeSyncReady || !studentJoinTime) {
       setQuizStatus('waiting');
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -141,11 +132,9 @@ export const useQuizSync = (activeQuiz) => {
         currentIndex: serverIndex,
         timeRemaining: remaining,
         quizEnded: ended,
-        quizStatus: activeQuiz.status,
-        totalQuestions: activeQuiz.questions?.length,
-        timeSynced: isTimeSynced(),
-        timeOffset: timeOffset,
-        timeSyncReady: timeSyncReady // NEW: Log sync status
+        studentJoinTime: new Date(studentJoinTime).toISOString(),
+        quizStartTime: activeQuiz.quizStartTime ? new Date(activeQuiz.quizStartTime).toISOString() : 'N/A',
+        timeSinceJoin: getSyncTime() - studentJoinTime
       });
 
       setCurrentQuestionIndex(serverIndex);
@@ -164,7 +153,7 @@ export const useQuizSync = (activeQuiz) => {
 
       // Auto-end quiz when time is up
       if (ended && activeQuiz.status === 'active') {
-        console.log('⏰ Quiz time ended automatically');
+        console.log('⏰ Quiz time ended automatically for student');
         setQuizStatus('ended');
         endActiveQuiz();
         if (intervalRef.current) {
@@ -177,7 +166,6 @@ export const useQuizSync = (activeQuiz) => {
       clearInterval(intervalRef.current);
     }
 
-    // More frequent updates for better accuracy
     intervalRef.current = setInterval(updateQuizState, 500);
     updateQuizState();
 
@@ -186,7 +174,7 @@ export const useQuizSync = (activeQuiz) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded, timeOffset, timeSyncReady]); // ADDED: timeSyncReady
+  }, [activeQuiz, getCurrentQuestionIndex, getTimeRemaining, hasQuizEnded, timeSyncReady, studentJoinTime]);
 
   return {
     currentQuestionIndex,

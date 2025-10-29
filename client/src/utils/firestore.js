@@ -1,912 +1,3 @@
-// import { 
-//   collection, addDoc, updateDoc, deleteDoc, doc, getDocs, getDoc,
-//   onSnapshot, query, where, orderBy, serverTimestamp, setDoc, limit
-// } from 'firebase/firestore';
-// import { db } from '../firebase/config';
-
-// const QUIZZES_COLLECTION = 'quizzes';
-// const ACTIVE_QUIZ_COLLECTION = 'activeQuiz';
-// const RESULTS_COLLECTION = 'results';
-// const CLASS_RESULTS_COLLECTION = 'classResults';
-// // Initialize active quiz document
-// export const initializeActiveQuiz = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const docSnap = await getDoc(activeQuizRef);
-    
-//     if (!docSnap.exists()) {
-//       await setDoc(activeQuizRef, {
-//         status: 'inactive',
-//         lastUpdated: serverTimestamp()
-//       });
-//       console.log('✅ Active quiz document initialized');
-//     }
-//   } catch (error) {
-//     console.error('Error initializing active quiz:', error);
-//   }
-// };
-
-// // Quiz Operations
-// export const saveQuizToFirestore = async (quiz) => {
-//   try {
-//     const quizWithTimestamp = {
-//       ...quiz,
-//       createdAt: serverTimestamp(),
-//       updatedAt: serverTimestamp(),
-//       status: 'scheduled',
-//       currentQuestionIndex: 0
-//     };
-    
-//     const { id, ...quizData } = quizWithTimestamp;
-//     const docRef = await addDoc(collection(db, QUIZZES_COLLECTION), quizData);
-//     return { id: docRef.id, ...quizData };
-//   } catch (error) {
-//     console.error('Error saving quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const getScheduledQuizById = async (quizId) => {
-//   try {
-//     const quizDoc = await getDoc(doc(db, QUIZZES_COLLECTION, quizId));
-//     if (quizDoc.exists()) {
-//       return { id: quizDoc.id, ...quizDoc.data() };
-//     }
-//     return null;
-//   } catch (error) {
-//     console.error('Error getting scheduled quiz:', error);
-//     return null;
-//   }
-// };
-
-// export const activateScheduledQuiz = async (quizId) => {
-//   try {
-//     const quiz = await getScheduledQuizById(quizId);
-//     if (!quiz) {
-//       throw new Error('Quiz not found');
-//     }
-
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-    
-//     const activeQuizData = {
-//       ...quiz,
-//       originalQuizId: quiz.id,
-//       quizStartTime: null,
-//       currentQuestionIndex: 0,
-//       totalParticipants: 0,
-//       waitingParticipants: [],
-//       status: 'waiting',
-//       lastUpdated: serverTimestamp(),
-//       isFromScheduled: true
-//     };
-
-//     console.log('🚀 Moving scheduled quiz to waiting room:', quiz.name);
-    
-//     await setDoc(activeQuizRef, activeQuizData);
-    
-//     await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
-//       status: 'activated',
-//       activatedAt: serverTimestamp()
-//     });
-    
-//     console.log('✅ Scheduled quiz moved to waiting room');
-//     return activeQuizData;
-//   } catch (error) {
-//     console.error('Error activating scheduled quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const isStudentInWaitingRoom = async (studentName) => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       const activeQuiz = activeQuizDoc.data();
-//       const waitingParticipants = activeQuiz.waitingParticipants || [];
-//       return waitingParticipants.includes(studentName);
-//     }
-//     return false;
-//   } catch (error) {
-//     console.error('Error checking waiting room status:', error);
-//     return false;
-//   }
-// };
-
-// export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
-//   try {
-//     console.log('🚀 Joining scheduled quiz:', quizId, studentName);
-    
-//     const quiz = await getScheduledQuizById(quizId);
-//     if (!quiz) {
-//       throw new Error('Quiz not found');
-//     }
-
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     let activeQuiz;
-    
-//     if (!activeQuizDoc.exists() || activeQuizDoc.data().status === 'inactive') {
-//       if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
-//         throw new Error('Quiz has no valid questions');
-//       }
-      
-//       activeQuiz = {
-//         ...quiz,
-//         originalQuizId: quiz.id,
-//         quizStartTime: null,
-//         currentQuestionIndex: 0,
-//         totalParticipants: 1,
-//         waitingParticipants: [studentName],
-//         status: 'waiting',
-//         lastUpdated: serverTimestamp(),
-//         isFromScheduled: true
-//       };
-
-//       await setDoc(activeQuizRef, activeQuiz);
-      
-//       await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
-//         status: 'activated',
-//         activatedAt: serverTimestamp()
-//       });
-      
-//     } else {
-//       const currentData = activeQuizDoc.data();
-      
-//       if (currentData.status === 'active') {
-//         throw new Error('Quiz has already started. Cannot join now.');
-//       }
-      
-//       const currentParticipants = currentData.waitingParticipants || [];
-      
-//       if (!currentParticipants.includes(studentName)) {
-//         const updatedParticipants = [...currentParticipants, studentName];
-//         await updateDoc(activeQuizRef, {
-//           waitingParticipants: updatedParticipants,
-//           totalParticipants: (currentData.totalParticipants || 0) + 1,
-//           lastUpdated: serverTimestamp()
-//         });
-//       }
-      
-//       activeQuiz = { id: activeQuizDoc.id, ...currentData };
-//     }
-
-//     console.log('✅ Successfully joined waiting room');
-//     return { success: true, quiz: activeQuiz };
-    
-//   } catch (error) {
-//     console.error('❌ Error joining scheduled quiz waiting room:', error);
-//     throw error;
-//   }
-// };
-
-// export const deleteQuizFromFirestore = async (quizId) => {
-//   try {
-//     await deleteDoc(doc(db, QUIZZES_COLLECTION, quizId));
-//     console.log('✅ Quiz deleted:', quizId);
-//   } catch (error) {
-//     console.error('Error deleting quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const setActiveQuiz = async (quiz) => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-    
-//     const activeQuizData = {
-//       ...quiz,
-//       originalQuizId: quiz.id,
-//       quizStartTime: null,
-//       currentQuestionIndex: 0,
-//       totalParticipants: 0,
-//       waitingParticipants: quiz.waitingParticipants || [],
-//       status: 'waiting',
-//       lastUpdated: serverTimestamp(),
-//       isFromScheduled: quiz.isFromScheduled || false
-//     };
-
-//     console.log('🚀 Setting active quiz to waiting room:', quiz.name);
-    
-//     await setDoc(activeQuizRef, activeQuizData);
-//     console.log('✅ Active quiz set to waiting room:', quiz.name);
-//     return activeQuizData;
-//   } catch (error) {
-//     console.error('Error setting active quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const getActiveQuizFromFirestore = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const docSnap = await getDoc(activeQuizRef);
-    
-//     if (docSnap.exists()) {
-//       const data = docSnap.data();
-//       return { id: docSnap.id, ...data };
-//     }
-//     return null;
-//   } catch (error) {
-//     console.error('Error getting active quiz:', error);
-//     return null;
-//   }
-// };
-
-// // FIXED: Real-time listener for active quiz
-// export const listenToActiveQuiz = (callback) => {
-//   const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-  
-//   return onSnapshot(activeQuizRef, (docSnap) => {
-//     if (docSnap.exists()) {
-//       const quizData = { id: docSnap.id, ...docSnap.data() };
-//       console.log('🎯 REAL-TIME UPDATE - Quiz Status:', quizData.status);
-//       callback(quizData);
-//     } else {
-//       console.log('🎯 REAL-TIME UPDATE - No active quiz');
-//       callback(null);
-//     }
-//   });
-// };
-
-// export const updateCurrentQuestion = async (newIndex) => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     await updateDoc(activeQuizRef, {
-//       currentQuestionIndex: newIndex,
-//       lastUpdated: serverTimestamp()
-//     });
-//   } catch (error) {
-//     console.error('Error updating current question:', error);
-//     throw error;
-//   }
-// };
-
-// // FIXED: Save top rankings to class results
-// // FIXED: Save top rankings to class results
-// export const saveTopRankingsToClass = async (quiz) => {
-//   try {
-//     // Get current quiz results only (use simple query)
-//     const resultsQuery = query(
-//       collection(db, RESULTS_COLLECTION),
-//       where('quizId', '==', quiz.id),
-//       orderBy('score', 'desc'),
-//       limit(5)
-//     );
-    
-//     const resultsSnapshot = await getDocs(resultsQuery);
-//     const topRankings = [];
-    
-//     resultsSnapshot.forEach(doc => {
-//       const data = doc.data();
-//       topRankings.push({
-//         studentName: data.studentName,
-//         score: data.score,
-//         percentage: data.percentage,
-//         totalQuestions: data.totalQuestions,
-//         tabSwitches: data.tabSwitches || 0
-//       });
-//     });
-
-//     // Manual sorting for tie-breaker
-//     topRankings.sort((a, b) => {
-//       if (b.score !== a.score) return b.score - a.score;
-//       return (a.completedAt || 0) - (b.completedAt || 0);
-//     });
-
-//     // Save to class results
-//     const classResultData = {
-//       quizId: quiz.id,
-//       quizName: quiz.name,
-//       quizClass: quiz.class,
-//       topRankings: topRankings,
-//       totalParticipants: topRankings.length,
-//       completedAt: serverTimestamp(),
-//       createdAt: serverTimestamp(),
-//       sessionId: `${quiz.id}_${Date.now()}`
-//     };
-
-//     await addDoc(collection(db, CLASS_RESULTS_COLLECTION), classResultData);
-//     console.log('🏆 Top 5 rankings saved to class results:', quiz.name);
-//     return topRankings;
-//   } catch (error) {
-//     console.error('Error saving top rankings to class:', error);
-//     throw error;
-//   }
-// };
-
-// // FIXED: Enhanced end active quiz function
-// export const endActiveQuiz = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       const activeQuiz = { id: activeQuizDoc.id, ...activeQuizDoc.data() };
-      
-//       console.log('🎯 Ending quiz:', activeQuiz.name);
-      
-//       // FIXED: Save top rankings AND ensure data integrity
-//       if (activeQuiz.id && activeQuiz.name) {
-//         await saveTopRankingsToClass(activeQuiz);
-        
-//         // Also save complete results for admin
-//         await saveCompleteQuizResults(activeQuiz);
-        
-//         if (activeQuiz.originalQuizId) {
-//           const originalQuizRef = doc(db, QUIZZES_COLLECTION, activeQuiz.originalQuizId);
-//           await updateDoc(originalQuizRef, {
-//             status: 'completed',
-//             endedAt: serverTimestamp()
-//           });
-//         }
-//       }
-      
-//       // Clear active quiz
-//       await setDoc(activeQuizRef, {
-//         status: 'inactive',
-//         lastUpdated: serverTimestamp()
-//       });
-      
-//       console.log('✅ Quiz ended, rankings saved, and complete results stored');
-//     }
-//   } catch (error) {
-//     console.error('Error ending quiz:', error);
-//     throw error;
-//   }
-// };
-
-// // In the pauseQuiz function, remove the unused 'currentData' variable
-// export const pauseQuiz = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       // Remove the unused variable assignment
-//       await updateDoc(activeQuizRef, {
-//         status: 'paused',
-//         pauseStartTime: Date.now(),
-//         lastUpdated: serverTimestamp()
-//       });
-//       console.log('⏸️ Quiz paused');
-//     }
-//   } catch (error) {
-//     console.error('Error pausing quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const resumeQuiz = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       const currentData = activeQuizDoc.data();
-//       const pauseDuration = Date.now() - (currentData.pauseStartTime || Date.now());
-//       const newQuizStartTime = currentData.quizStartTime + pauseDuration;
-      
-//       await updateDoc(activeQuizRef, {
-//         status: 'active',
-//         quizStartTime: newQuizStartTime,
-//         lastUpdated: serverTimestamp()
-//       });
-//       console.log('▶️ Quiz resumed');
-//     }
-//   } catch (error) {
-//     console.error('Error resuming quiz:', error);
-//     throw error;
-//   }
-// };
-
-// export const startQuizFromWaitingRoom = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       const currentData = activeQuizDoc.data();
-      
-//       await updateDoc(activeQuizRef, {
-//         status: 'active',
-//         quizStartTime: Date.now(),
-//         lastUpdated: serverTimestamp()
-//       });
-      
-//       console.log('🚀 Quiz started from waiting room');
-//       return true;
-//     }
-//     return false;
-//   } catch (error) {
-//     console.error('Error starting quiz from waiting room:', error);
-//     throw error;
-//   }
-// };
-
-// export const addStudentToWaitingRoom = async (studentName) => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (!activeQuizDoc.exists()) {
-//       return [];
-//     }
-
-//     const currentData = activeQuizDoc.data();
-//     const currentParticipants = currentData.waitingParticipants || [];
-    
-//     if (currentParticipants.includes(studentName)) {
-//       return currentParticipants;
-//     }
-
-//     const updatedParticipants = [...currentParticipants, studentName];
-    
-//     await updateDoc(activeQuizRef, {
-//       waitingParticipants: updatedParticipants,
-//       lastUpdated: serverTimestamp()
-//     });
-    
-//     console.log('✅ Student added to waiting room:', studentName);
-//     return updatedParticipants;
-    
-//   } catch (error) {
-//     console.error('Error adding student to waiting room:', error);
-//     throw error;
-//   }
-// };
-
-// // FIXED: Get student result with proper filtering
-// export const getStudentResult = async (quizId, studentName) => {
-//   try {
-//     const q = query(
-//       collection(db, RESULTS_COLLECTION), 
-//       where('quizId', '==', quizId),
-//       where('studentName', '==', studentName)
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     if (!querySnapshot.empty) {
-//       const doc = querySnapshot.docs[0];
-//       const data = doc.data();
-//       return { 
-//         id: doc.id, 
-//         ...data,
-//         score: Number(data.score) || 0,
-//         percentage: Number(data.percentage) || 0,
-//         tabSwitches: Number(data.tabSwitches) || 0
-//       };
-//     }
-//     return null;
-//   } catch (error) {
-//     console.error('Error getting student result:', error);
-//     return null;
-//   }
-// };
-
-// const cleanAnswersArray = (answers) => {
-//   if (!answers) return [];
-//   return answers.map(answer => answer === undefined ? '' : answer);
-// };
-
-// // FIXED: Save or update quiz result with better duplicate prevention
-// export const saveOrUpdateQuizResult = async (result) => {
-//   try {
-//     const cleanedResult = {
-//       ...result,
-//       answers: result.answers || [],
-//       tabSwitches: result.tabSwitches || 0,
-//       totalQuestions: result.totalQuestions || 1,
-//       quizId: result.quizId,
-//       quizName: result.quizName,
-//       quizClass: result.quizClass || 'Unknown'
-//     };
-
-//     const existingResult = await getStudentResult(cleanedResult.quizId, cleanedResult.studentName);
-    
-//     if (existingResult) {
-//       // Update existing result
-//       const resultRef = doc(db, RESULTS_COLLECTION, existingResult.id);
-//       await updateDoc(resultRef, {
-//         score: cleanedResult.score,
-//         percentage: cleanedResult.percentage,
-//         totalQuestions: cleanedResult.totalQuestions,
-//         answers: cleanedResult.answers,
-//         tabSwitches: cleanedResult.tabSwitches,
-//         completedAt: cleanedResult.completedAt || existingResult.completedAt
-//       });
-//       return { id: existingResult.id, ...cleanedResult };
-//     } else {
-//       // Create new result
-//       const resultWithTimestamp = {
-//         ...cleanedResult,
-//         submittedAt: serverTimestamp(),
-//         joinTime: cleanedResult.joinTime || Date.now()
-//       };
-      
-//       const docRef = await addDoc(collection(db, RESULTS_COLLECTION), resultWithTimestamp);
-//       return { id: docRef.id, ...cleanedResult };
-//     }
-//   } catch (error) {
-//     console.error('Error saving/updating result:', error);
-//     throw error;
-//   }
-// };
-// export const incrementParticipantCount = async () => {
-//   try {
-//     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
-//     const activeQuizDoc = await getDoc(activeQuizRef);
-    
-//     if (activeQuizDoc.exists()) {
-//       const currentData = activeQuizDoc.data();
-//       await updateDoc(activeQuizRef, {
-//         totalParticipants: (currentData.totalParticipants || 0) + 1,
-//         lastUpdated: serverTimestamp()
-//       });
-//     }
-//   } catch (error) {
-//     console.error('Error incrementing participant count:', error);
-//   }
-// };
-
-// // FIXED: Get quiz results with proper filtering and sorting
-// // FIXED: Get quiz results with proper filtering and sorting
-// export const getQuizResultsFromFirestore = async (quizId) => {
-//   try {
-//     console.log('🔍 Fetching results for quiz:', quizId);
-    
-//     const q = query(
-//       collection(db, RESULTS_COLLECTION), 
-//       where('quizId', '==', quizId)
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const results = [];
-//     const seenStudents = new Set();
-    
-//     querySnapshot.forEach((doc) => {
-//       const data = doc.data();
-//       const studentKey = data.studentName;
-      
-//       // FIXED: Only take latest result per student for THIS quiz
-//       if (!seenStudents.has(studentKey)) {
-//         seenStudents.add(studentKey);
-        
-//         const totalQuestions = data.totalQuestions || (data.answers ? data.answers.length : 0) || 1;
-//         const score = Number(data.score) || 0;
-//         const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
-        
-//         results.push({ 
-//           id: doc.id, 
-//           ...data,
-//           score: score,
-//           totalQuestions: totalQuestions,
-//           percentage: percentage,
-//           tabSwitches: Number(data.tabSwitches) || 0
-//         });
-//       }
-//     });
-    
-//     // FIXED: Manual sorting for tie-breaker
-//     results.sort((a, b) => {
-//       if (b.score !== a.score) return b.score - a.score;
-//       return (a.completedAt || 0) - (b.completedAt || 0);
-//     });
-    
-//     console.log(`📊 Found ${results.length} unique results for quiz: ${quizId}`);
-//     return results;
-//   } catch (error) {
-//     console.error('Error getting quiz results:', error);
-//     throw error;
-//   }
-// };
-// // FIXED: Real-time listener for quiz results with duplicate prevention
-// export const listenToQuizResults = (quizId, callback) => {
-//   const q = query(
-//     collection(db, RESULTS_COLLECTION), 
-//     where('quizId', '==', quizId),
-//     orderBy('score', 'desc')
-//   );
-  
-//   return onSnapshot(q, (querySnapshot) => {
-//     const results = [];
-//     const seenStudents = new Set();
-    
-//     querySnapshot.forEach((doc) => {
-//       const data = doc.data();
-//       const studentKey = `${data.studentName}_${quizId}`;
-      
-//       // Take only the latest result per student
-//       if (!seenStudents.has(studentKey)) {
-//         seenStudents.add(studentKey);
-//         results.push({ 
-//           id: doc.id, 
-//           ...data,
-//           score: Number(data.score) || 0,
-//           percentage: Number(data.percentage) || 0,
-//           tabSwitches: Number(data.tabSwitches) || 0
-//         });
-//       }
-//     });
-    
-//     console.log(`📊 Real-time: ${results.length} unique participants for quiz: ${quizId}`);
-//     callback(results);
-//   });
-// };
-
-// export const getQuizzesFromFirestore = async () => {
-//   try {
-//     const q = query(
-//       collection(db, QUIZZES_COLLECTION),
-//       where('status', 'in', ['scheduled', 'draft']),
-//       orderBy('scheduledTime', 'asc')
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const quizzes = [];
-//     querySnapshot.forEach((doc) => {
-//       quizzes.push({ id: doc.id, ...doc.data() });
-//     });
-//     return quizzes;
-//   } catch (error) {
-//     console.error('Error getting quizzes:', error);
-//     throw error;
-//   }
-// };
-
-// export const getClassResults = async () => {
-//   try {
-//     const q = query(
-//       collection(db, CLASS_RESULTS_COLLECTION),
-//       orderBy('completedAt', 'desc')
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const classResults = [];
-//     querySnapshot.forEach((doc) => {
-//       classResults.push({ id: doc.id, ...doc.data() });
-//     });
-//     return classResults;
-//   } catch (error) {
-//     console.error('Error getting class results:', error);
-//     throw error;
-//   }
-// };
-
-// export const getAllScheduledQuizzes = async () => {
-//   try {
-//     const q = query(
-//       collection(db, QUIZZES_COLLECTION),
-//       where('status', 'in', ['scheduled', 'activated']),
-//       orderBy('scheduledTime', 'asc')
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const quizzes = [];
-    
-//     querySnapshot.forEach((doc) => {
-//       quizzes.push({ 
-//         id: doc.id, 
-//         ...doc.data()
-//       });
-//     });
-    
-//     console.log(`📅 Found ${quizzes.length} scheduled/activated quizzes`);
-//     return quizzes;
-//   } catch (error) {
-//     console.error('Error getting all scheduled quizzes:', error);
-//     return [];
-//   }
-// };
-// export const getAllQuizResultsForAdmin = async (quizId) => {
-//   try {
-//     console.log('👑 Admin fetching ALL results for quiz:', quizId);
-    
-//     const q = query(
-//       collection(db, RESULTS_COLLECTION), 
-//       where('quizId', '==', quizId)
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const results = [];
-    
-//     const seenStudents = new Set();
-    
-//     querySnapshot.forEach((doc) => {
-//       const data = doc.data();
-//       const studentKey = `${data.studentName}_${quizId}`;
-      
-//       // Take only the latest result per student
-//       if (!seenStudents.has(studentKey)) {
-//         seenStudents.add(studentKey);
-        
-//         const totalQuestions = data.totalQuestions || 
-//                               (data.answers ? data.answers.length : 0) || 
-//                               1;
-//         const score = Number(data.score) || 0;
-//         const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
-        
-//         results.push({ 
-//           id: doc.id, 
-//           ...data,
-//           score: score,
-//           totalQuestions: totalQuestions,
-//           percentage: percentage,
-//           tabSwitches: Number(data.tabSwitches) || 0
-//         });
-//       }
-//     });
-    
-//     // Sort by score descending
-//     results.sort((a, b) => {
-//       if (b.score !== a.score) return b.score - a.score;
-//       return (a.completedAt || 0) - (b.completedAt || 0);
-//     });
-    
-//     console.log(`👑 Admin found ${results.length} total participants for quiz: ${quizId}`);
-//     return results;
-//   } catch (error) {
-//     console.error('Error getting all results for admin:', error);
-//     throw error;
-//   }
-// };
-// // FIXED: Get all class results with proper filtering
-// export const getAllClassResults = async () => {
-//   try {
-//     const q = query(
-//       collection(db, CLASS_RESULTS_COLLECTION),
-//       orderBy('completedAt', 'desc'),
-//       limit(50) // Limit to prevent loading too much data
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const classResults = [];
-//     const seenQuizzes = new Set();
-    
-//     querySnapshot.forEach((doc) => {
-//       const data = doc.data();
-//       const quizKey = data.quizId;
-      
-//       // Take only the latest result per quiz
-//       if (!seenQuizzes.has(quizKey)) {
-//         seenQuizzes.add(quizKey);
-//         classResults.push({ id: doc.id, ...data });
-//       }
-//     });
-    
-//     console.log(`🏆 Found ${classResults.length} unique class results`);
-//     return classResults;
-//   } catch (error) {
-//     console.error('Error getting class results:', error);
-//     throw error;
-//   }
-// };
-
-// export const getScheduledQuizzes = async () => {
-//   try {
-//     const q = query(
-//       collection(db, QUIZZES_COLLECTION),
-//       where('status', 'in', ['scheduled', 'activated']),
-//       orderBy('scheduledTime', 'asc')
-//     );
-    
-//     const querySnapshot = await getDocs(q);
-//     const quizzes = [];
-    
-//     querySnapshot.forEach((doc) => {
-//       quizzes.push({ 
-//         id: doc.id, 
-//         ...doc.data()
-//       });
-//     });
-    
-//     console.log(`📅 Found ${quizzes.length} scheduled/activated quizzes`);
-//     return quizzes;
-//   } catch (error) {
-//     console.error('Error getting scheduled quizzes:', error);
-//     return [];
-//   }
-// };
-
-// export const deleteClassResult = async (resultId) => {
-//   try {
-//     await deleteDoc(doc(db, CLASS_RESULTS_COLLECTION, resultId));
-//     console.log('🗑️ Class result deleted:', resultId);
-//     return true;
-//   } catch (error) {
-//     console.error('Error deleting class result:', error);
-//     throw error;
-//   }
-// };
-
-// export const saveQuizResults = async (quizId, studentId, resultData) => {
-//   try {
-//     const studentResultRef = doc(db, 'students', studentId, 'results', quizId);
-//     await setDoc(studentResultRef, resultData);
-
-//     const classResultRef = doc(db, 'quizzes', quizId, 'results', studentId);
-//     await setDoc(classResultRef, resultData);
-
-//     console.log('✅ Results saved successfully');
-//     return true;
-//   } catch (error) {
-//     console.error('❌ Error saving results:', error);
-//     throw error;
-//   }
-// };
-
-// export const calculateRankings = async (quizId, studentId, score, timestamp) => {
-//   try {
-//     const resultsSnapshot = await getDocs(collection(db, 'quizzes', quizId, 'results'));
-//     const allResults = [];
-    
-//     resultsSnapshot.forEach(doc => {
-//       const data = doc.data();
-//       allResults.push({
-//         studentId: data.studentId,
-//         score: data.score,
-//         timestamp: data.timestamp
-//       });
-//     });
-
-//     const sortedResults = allResults.sort((a, b) => {
-//       if (b.score !== a.score) return b.score - a.score;
-//       return a.timestamp - b.timestamp;
-//     });
-
-//     const rank = sortedResults.findIndex(result => result.studentId === studentId) + 1;
-//     const totalParticipants = sortedResults.length;
-
-//     return { rank, totalParticipants };
-//   } catch (error) {
-//     console.error('❌ Error calculating rankings:', error);
-//     throw error;
-//   }
-// };
-
-// // FIXED: Update tab switch count with proper data
-// export const updateTabSwitchCount = async (quizId, studentName, switchCount) => {
-//   try {
-//     const existingResult = await getStudentResult(quizId, studentName);
-    
-//     if (existingResult) {
-//       const resultRef = doc(db, RESULTS_COLLECTION, existingResult.id);
-//       await updateDoc(resultRef, {
-//         tabSwitches: switchCount,
-//         lastActivity: serverTimestamp()
-//       });
-//       console.log('🔄 Updated tab switch count for:', studentName, switchCount);
-//     }
-//   } catch (error) {
-//     console.error('Error updating tab switch count:', error);
-//   }
-// };
-// export const saveCompleteQuizResults = async (quiz) => {
-//   try {
-//     const allResults = await getAllQuizResultsForAdmin(quiz.id);
-    
-//     // Save complete results to a separate collection for admin
-//     const completeResultsData = {
-//       quizId: quiz.id,
-//       quizName: quiz.name,
-//       quizClass: quiz.class,
-//       allResults: allResults,
-//       totalParticipants: allResults.length,
-//       completedAt: serverTimestamp(),
-//       createdAt: serverTimestamp(),
-//       sessionId: `${quiz.id}_${Date.now()}_complete`
-//     };
-
-//     await addDoc(collection(db, 'completeQuizResults'), completeResultsData);
-//     console.log('📊 Complete quiz results saved for admin:', quiz.name);
-//     return allResults;
-//   } catch (error) {
-//     console.error('Error saving complete quiz results:', error);
-//     throw error;
-//   }
-// };
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, getDocs, getDoc,
   onSnapshot, query, where, orderBy, serverTimestamp, setDoc, limit
@@ -940,6 +31,7 @@ export const saveQuizToFirestore = async (quiz) => {
   try {
     const quizWithTimestamp = {
       ...quiz,
+      passkey: quiz.passkey || '', // NEW: Ensure passkey is included
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       status: 'scheduled'
@@ -958,7 +50,12 @@ export const getScheduledQuizById = async (quizId) => {
   try {
     const quizDoc = await getDoc(doc(db, QUIZZES_COLLECTION, quizId));
     if (quizDoc.exists()) {
-      return { id: quizDoc.id, ...quizDoc.data() };
+      const data = quizDoc.data();
+      return { 
+        id: quizDoc.id, 
+        ...data,
+        passkey: data.passkey || '' // Ensure passkey field exists
+      };
     }
     return null;
   } catch (error) {
@@ -1002,6 +99,7 @@ export const activateScheduledQuiz = async (quizId) => {
   }
 };
 
+
 export const isStudentInWaitingRoom = async (studentName) => {
   try {
     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
@@ -1018,7 +116,125 @@ export const isStudentInWaitingRoom = async (studentName) => {
     return false;
   }
 };
+export const joinScheduledQuizWithPasskey = async (quizId, studentName, enteredPasskey = '') => {
+  try {
+    const quiz = await getScheduledQuizById(quizId);
+    if (!quiz) {
+      throw new Error('Quiz not found');
+    }
 
+    // Verify passkey if quiz has one
+    if (quiz.passkey && quiz.passkey.trim() !== '') {
+      if (!enteredPasskey || quiz.passkey !== enteredPasskey.trim()) {
+        throw new Error('Invalid passkey');
+      }
+    }
+
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    let activeQuiz;
+    
+    if (!activeQuizDoc.exists() || activeQuizDoc.data().status === 'inactive') {
+      activeQuiz = {
+        ...quiz,
+        originalQuizId: quiz.id,
+        quizStartTime: null,
+        currentQuestionIndex: 0,
+        totalParticipants: 1,
+        waitingParticipants: [studentName],
+        status: 'waiting', // Keep as 'waiting'
+        lastUpdated: serverTimestamp(),
+        isFromScheduled: true
+      };
+
+      await setDoc(activeQuizRef, activeQuiz);
+      
+      // 🚨 REMOVED THE AUTOMATIC STATUS UPDATE HERE TOO 🚨
+      // Don't change the scheduled quiz status automatically
+      // await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
+      //   status: 'activated',
+      //   activatedAt: serverTimestamp()
+      // });
+      
+    } else {
+      const currentData = activeQuizDoc.data();
+      
+      if (currentData.status === 'active') {
+        throw new Error('Quiz has already started. Cannot join now.');
+      }
+      
+      const currentParticipants = currentData.waitingParticipants || [];
+      
+      if (!currentParticipants.includes(studentName)) {
+        const updatedParticipants = [...currentParticipants, studentName];
+        await updateDoc(activeQuizRef, {
+          waitingParticipants: updatedParticipants,
+          totalParticipants: (currentData.totalParticipants || 0) + 1,
+          lastUpdated: serverTimestamp()
+        });
+      }
+      
+      activeQuiz = { id: activeQuizDoc.id, ...currentData };
+    }
+
+    return { success: true, quiz: activeQuiz };
+    
+  } catch (error) {
+    console.error('Error joining scheduled quiz with passkey:', error);
+    throw error;
+  }
+};
+export const verifyActiveQuizPasskey = async (enteredPasskey) => {
+  try {
+    const activeQuiz = await getActiveQuizFromFirestore();
+    if (!activeQuiz) {
+      return { valid: false, message: 'No active quiz found' };
+    }
+
+    // If active quiz has no passkey, allow access
+    if (!activeQuiz.passkey || activeQuiz.passkey.trim() === '') {
+      return { valid: true, quiz: activeQuiz };
+    }
+
+    // Compare passkeys (case-sensitive)
+    const isValid = activeQuiz.passkey === enteredPasskey.trim();
+    
+    return { 
+      valid: isValid, 
+      quiz: isValid ? activeQuiz : null,
+      message: isValid ? 'Passkey verified' : 'Invalid passkey'
+    };
+  } catch (error) {
+    console.error('Error verifying active quiz passkey:', error);
+    return { valid: false, quiz: null, message: error.message };
+  }
+};
+export const verifyQuizPasskey = async (quizId, enteredPasskey) => {
+  try {
+    const quiz = await getScheduledQuizById(quizId);
+    if (!quiz) {
+      throw new Error('Quiz not found');
+    }
+
+    // If quiz has no passkey, allow access
+    if (!quiz.passkey || quiz.passkey.trim() === '') {
+      return { valid: true, quiz: quiz };
+    }
+
+    // Compare passkeys (case-sensitive)
+    const isValid = quiz.passkey === enteredPasskey.trim();
+    
+    return { 
+      valid: isValid, 
+      quiz: isValid ? quiz : null,
+      message: isValid ? 'Passkey verified' : 'Invalid passkey'
+    };
+  } catch (error) {
+    console.error('Error verifying passkey:', error);
+    return { valid: false, quiz: null, message: error.message };
+  }
+};
 export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
   try {
     const quiz = await getScheduledQuizById(quizId);
@@ -1034,22 +250,24 @@ export const joinScheduledQuizWaitingRoom = async (quizId, studentName) => {
     if (!activeQuizDoc.exists() || activeQuizDoc.data().status === 'inactive') {
       activeQuiz = {
         ...quiz,
-        originalQuizId: quiz.id, // PRESERVE ORIGINAL ID
+        originalQuizId: quiz.id,
         quizStartTime: null,
         currentQuestionIndex: 0,
         totalParticipants: 1,
         waitingParticipants: [studentName],
-        status: 'waiting',
+        status: 'waiting', // Keep as 'waiting'
         lastUpdated: serverTimestamp(),
         isFromScheduled: true
       };
 
       await setDoc(activeQuizRef, activeQuiz);
       
-      await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
-        status: 'activated',
-        activatedAt: serverTimestamp()
-      });
+      // 🚨 REMOVED THE AUTOMATIC STATUS UPDATE 🚨
+      // Don't change the scheduled quiz status - wait for admin to start manually
+      // await updateDoc(doc(db, QUIZZES_COLLECTION, quizId), {
+      //   status: 'activated', // ← THIS WAS THE BUG!
+      //   activatedAt: serverTimestamp()
+      // });
       
     } else {
       const currentData = activeQuizDoc.data();
@@ -1120,7 +338,11 @@ export const getActiveQuizFromFirestore = async () => {
     
     if (docSnap.exists()) {
       const data = docSnap.data();
-      return { id: docSnap.id, ...data };
+      return { 
+        id: docSnap.id, 
+        ...data,
+        passkey: data.passkey || '' // Ensure passkey field exists
+      };
     }
     return null;
   } catch (error) {
@@ -1134,7 +356,12 @@ export const listenToActiveQuiz = (callback) => {
   
   return onSnapshot(activeQuizRef, (docSnap) => {
     if (docSnap.exists()) {
-      const quizData = { id: docSnap.id, ...docSnap.data() };
+      const data = docSnap.data();
+      const quizData = { 
+        id: docSnap.id, 
+        ...data,
+        passkey: data.passkey || '' // Ensure passkey field exists
+      };
       callback(quizData);
     } else {
       callback(null);
@@ -1255,6 +482,7 @@ export const resumeQuiz = async () => {
   }
 };
 
+// In firestore.js - Enhance startQuizFromWaitingRoom to ensure proper status update
 export const startQuizFromWaitingRoom = async () => {
   try {
     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
@@ -1266,6 +494,8 @@ export const startQuizFromWaitingRoom = async () => {
         quizStartTime: Date.now(),
         lastUpdated: serverTimestamp()
       });
+      
+      console.log('✅ Quiz started - Entry closed for latecomers');
       return true;
     }
     return false;
@@ -1531,12 +761,11 @@ export const getClassResults = async () => {
   }
 };
 
-// FIXED: Get scheduled quizzes excluding completed ones
 export const getAllScheduledQuizzes = async () => {
   try {
     const q = query(
       collection(db, QUIZZES_COLLECTION),
-      where('status', 'in', ['scheduled', 'activated']), // Only get scheduled and activated
+      where('status', 'in', ['scheduled', 'activated']),
       orderBy('scheduledTime', 'asc')
     );
     
@@ -1545,11 +774,11 @@ export const getAllScheduledQuizzes = async () => {
     
     querySnapshot.forEach((doc) => {
       const quizData = doc.data();
-      // FIX: Only include quizzes that are not completed
       if (quizData.status !== 'completed') {
         quizzes.push({ 
           id: doc.id, 
-          ...quizData
+          ...quizData,
+          passkey: quizData.passkey || '' // Ensure passkey field exists
         });
       }
     });
@@ -1682,6 +911,8 @@ export const deleteClassResult = async (resultId) => {
 
 export const updateTabSwitchCount = async (quizId, studentName, switchCount) => {
   try {
+    console.log('🔄 Updating tab switch count:', { quizId, studentName, switchCount });
+    
     const existingResult = await getStudentResult(quizId, studentName);
     
     if (existingResult) {
@@ -1692,9 +923,24 @@ export const updateTabSwitchCount = async (quizId, studentName, switchCount) => 
         updatedAt: serverTimestamp(),
         lastTabUpdate: Date.now()
       });
+      console.log('✅ Tab switch count updated:', switchCount);
+    } else {
+      // Create a new result document if none exists
+      console.log('📝 No existing result found, creating new one for tab tracking');
+      await saveOrUpdateQuizResult({
+        studentName: studentName,
+        quizId: quizId,
+        tabSwitches: switchCount,
+        score: 0,
+        totalQuestions: 0,
+        percentage: 0,
+        answers: [],
+        lastActivity: serverTimestamp(),
+        lastTabUpdate: Date.now()
+      });
     }
   } catch (error) {
-    console.error('Error updating tab switch count:', error);
+    console.error('❌ Error updating tab switch count:', error);
   }
 };
 
@@ -1756,38 +1002,103 @@ const saveCompleteQuizResults = async (quiz) => {
 };
 // ==================== TIME SYNCHRONIZATION ====================
 
-// NEW: Get current server time from Firebase
+// ==================== TIME SYNCHRONIZATION ====================
+
+// FIXED: Get current server time from Firebase - RELIABLE VERSION
+// ULTRA-RELIABLE: Get current server time from Firebase
 export const getServerTime = async () => {
   try {
-    const serverTimeRef = doc(db, 'serverTime', 'current');
-    await setDoc(serverTimeRef, {
-      timestamp: serverTimestamp()
+    // Method 1: Use a completely new approach with transaction-like behavior
+    const tempCollection = 'timeSyncTemp';
+    const tempDocId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const tempRef = doc(db, tempCollection, tempDocId);
+    
+    // Write with server timestamp
+    const writeResult = await setDoc(tempRef, {
+      createdAt: serverTimestamp(),
+      clientTime: Date.now(),
+      randomId: Math.random().toString(36).substr(2, 9)
     });
     
-    const docSnap = await getDoc(serverTimeRef);
-    if (docSnap.exists()) {
-      const serverTime = docSnap.data().timestamp;
-      return serverTime.toDate().getTime(); // Convert to milliseconds
+    // Add a small delay to ensure server processes the write
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Read it back multiple times if needed
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      const docSnap = await getDoc(tempRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        
+        // Check if server timestamp is properly set
+        if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          const serverTime = data.createdAt.toDate().getTime();
+          
+          console.log('✅ Server time successfully retrieved:', {
+            serverTime: new Date(serverTime).toISOString(),
+            clientTime: new Date(data.clientTime).toISOString(),
+            difference: serverTime - data.clientTime,
+            attempt: attempts + 1
+          });
+          
+          // Clean up
+          await deleteDoc(tempRef).catch(e => console.log('Cleanup warning:', e.message));
+          return serverTime;
+        } else {
+          console.log('🕒 Waiting for server timestamp... attempt:', attempts + 1);
+        }
+      }
+      
+      attempts++;
+      if (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
-    return Date.now(); // Fallback to client time
+    
+    // Fallback after all attempts
+    console.warn('⚠️ Using client time as fallback after', maxAttempts, 'attempts');
+    await deleteDoc(tempRef).catch(e => console.log('Cleanup warning:', e.message));
+    return Date.now();
+    
   } catch (error) {
-    console.error('Error getting server time:', error);
+    console.error('❌ Error in getServerTime:', error.message);
     return Date.now(); // Fallback to client time
   }
 };
 
-// NEW: Calculate time offset between server and client
+// FIXED: Calculate time offset between server and client
 export const calculateTimeOffset = async () => {
   try {
-    const serverTime = await getServerTime();
+    // Try multiple times to get accurate server time
+    let serverTime;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      serverTime = await getServerTime();
+      attempts++;
+      
+      // If we got a valid server time, break
+      if (serverTime && serverTime > 0) {
+        break;
+      }
+      
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
     const clientTime = Date.now();
     const offset = serverTime - clientTime;
     
-    console.log('⏰ Time synchronization:', {
+    console.log('⏰ Time synchronization completed:', {
       serverTime: new Date(serverTime).toISOString(),
       clientTime: new Date(clientTime).toISOString(), 
       offset: `${offset}ms`,
-      offsetSeconds: `${(offset / 1000).toFixed(1)}s`
+      offsetSeconds: `${(offset / 1000).toFixed(1)}s`,
+      attempts: attempts
     });
     
     return offset;
@@ -1797,27 +1108,150 @@ export const calculateTimeOffset = async () => {
   }
 };
 
-// NEW: Get synchronized time (client time + offset)
+// Get synchronized time (client time + offset)
 export const getSynchronizedTime = (offset = 0) => {
   return Date.now() + offset;
 };
 
-// NEW: Update quiz start to use server time
+// Update quiz start to use server time
 export const startQuizWithServerTime = async () => {
   try {
+    // Add a 3-second buffer for students to sync
+    const bufferTime = 3000; // 3 seconds
     const serverTime = await getServerTime();
+    const quizStartTime = serverTime + bufferTime;
+    
     const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
     
     await updateDoc(activeQuizRef, {
       status: 'active',
-      quizStartTime: serverTime, // Use server time instead of Date.now()
+      quizStartTime: quizStartTime, // Start 3 seconds in future
       lastUpdated: serverTimestamp()
     });
     
-    console.log('✅ Quiz started with server time:', new Date(serverTime).toISOString());
-    return serverTime;
+    console.log('✅ Quiz starting in 3 seconds at:', new Date(quizStartTime).toISOString());
+    return quizStartTime;
   } catch (error) {
     console.error('Error starting quiz with server time:', error);
     throw error;
+  }
+};
+
+// NEW: Enhanced time sync with better error handling
+export const initializeTimeSync = async () => {
+  try {
+    console.log('🕒 Starting time synchronization...');
+    
+    const offset = await calculateTimeOffset();
+    
+    // Store offset globally for use in getSyncTime
+    if (typeof window !== 'undefined') {
+      window.timeOffset = offset;
+    }
+    
+    console.log('✅ Time synchronization ready. Offset:', offset, 'ms');
+    return offset;
+  } catch (error) {
+    console.error('❌ Time synchronization failed:', error);
+    return 0;
+  }
+};
+
+// NEW: Check if time is synchronized
+export const isTimeSynced = () => {
+  return typeof window !== 'undefined' && window.timeOffset !== undefined;
+};
+
+// NEW: Get sync time with fallback
+export const getSyncTime = () => {
+  const offset = (typeof window !== 'undefined' && window.timeOffset) || 0;
+  return Date.now() + offset;
+};
+export const removeQuizPasskey = async (quizId) => {
+  try {
+    const quizRef = doc(db, QUIZZES_COLLECTION, quizId);
+    await updateDoc(quizRef, {
+      passkey: '',
+      updatedAt: serverTimestamp()
+    });
+    
+    // Also remove from active quiz if it exists
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    if (activeQuizDoc.exists()) {
+      const activeQuiz = activeQuizDoc.data();
+      if (activeQuiz.originalQuizId === quizId || activeQuiz.id === quizId) {
+        await updateDoc(activeQuizRef, {
+          passkey: '',
+          lastUpdated: serverTimestamp()
+        });
+      }
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing quiz passkey:', error);
+    throw error;
+  }
+};
+export const updateQuizPasskey = async (quizId, newPasskey) => {
+  try {
+    const quizRef = doc(db, QUIZZES_COLLECTION, quizId);
+    await updateDoc(quizRef, {
+      passkey: newPasskey,
+      updatedAt: serverTimestamp()
+    });
+    
+    // Also update active quiz if it exists
+    const activeQuizRef = doc(db, ACTIVE_QUIZ_COLLECTION, 'current');
+    const activeQuizDoc = await getDoc(activeQuizRef);
+    
+    if (activeQuizDoc.exists()) {
+      const activeQuiz = activeQuizDoc.data();
+      if (activeQuiz.originalQuizId === quizId || activeQuiz.id === quizId) {
+        await updateDoc(activeQuizRef, {
+          passkey: newPasskey,
+          lastUpdated: serverTimestamp()
+        });
+      }
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating quiz passkey:', error);
+    throw error;
+  }
+};
+// NEW: Check if student name already exists in waiting room or results
+export const checkDuplicateStudentName = async (quizId, studentName) => {
+  try {
+    // Check in waiting room (active quiz)
+    const activeQuiz = await getActiveQuizFromFirestore();
+    if (activeQuiz && activeQuiz.waitingParticipants) {
+      const inWaitingRoom = activeQuiz.waitingParticipants.includes(studentName);
+      if (inWaitingRoom) {
+        return { 
+          exists: true, 
+          location: 'waiting_room', 
+          message: 'This name is already in the waiting room' 
+        };
+      }
+    }
+
+    // Check in completed results
+    const existingResult = await getStudentResult(quizId, studentName);
+    if (existingResult) {
+      return { 
+        exists: true, 
+        location: 'completed_quiz', 
+        message: 'This name has already completed the quiz' 
+      };
+    }
+
+    return { exists: false, location: null, message: 'Name is available' };
+  } catch (error) {
+    console.error('Error checking duplicate name:', error);
+    return { exists: false, location: null, message: 'Error checking name' };
   }
 };
