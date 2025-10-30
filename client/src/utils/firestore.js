@@ -1255,3 +1255,78 @@ export const checkDuplicateStudentName = async (quizId, studentName) => {
     return { exists: false, location: null, message: 'Error checking name' };
   }
 };
+// ==================== PROGRESS PERSISTENCE ====================
+export const saveQuizProgress = async (quizId, studentName, progress) => {
+  try {
+    const progressData = {
+      ...progress,
+      quizId,
+      studentName,
+      lastSaved: serverTimestamp(),
+      answers: progress.answers || []
+    };
+
+    // Save to Firebase
+    const progressRef = doc(db, 'quizProgress', `${quizId}_${studentName}`);
+    await setDoc(progressRef, progressData);
+    
+    // Also save to localStorage as backup
+    localStorage.setItem(`quizProgress_${quizId}_${studentName}`, JSON.stringify(progressData));
+    
+    console.log('💾 Progress saved:', { quizId, studentName, question: progress.currentQuestionIndex });
+  } catch (error) {
+    console.error('Error saving progress:', error);
+    // Fallback to localStorage only
+    const fallbackData = {  // FIXED: Use fallbackData instead of progressData
+      ...progress,
+      quizId,
+      studentName,
+      lastSaved: Date.now(),
+      answers: progress.answers || []
+    };
+    localStorage.setItem(`quizProgress_${quizId}_${studentName}`, JSON.stringify(fallbackData));  // FIXED: Use fallbackData
+  }
+};
+
+export const getQuizProgress = async (quizId, studentName) => {
+  try {
+    // Try Firebase first
+    const progressRef = doc(db, 'quizProgress', `${quizId}_${studentName}`);
+    const progressDoc = await getDoc(progressRef);
+    
+    if (progressDoc.exists()) {
+      const data = progressDoc.data();
+      console.log('📥 Progress loaded from Firebase:', data);
+      return data;
+    }
+    
+    // Fallback to localStorage
+    const localProgress = localStorage.getItem(`quizProgress_${quizId}_${studentName}`);
+    if (localProgress) {
+      const data = JSON.parse(localProgress);
+      console.log('📥 Progress loaded from localStorage:', data);
+      return data;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error loading progress:', error);
+    // Fallback to localStorage
+    const localProgress = localStorage.getItem(`quizProgress_${quizId}_${studentName}`);
+    return localProgress ? JSON.parse(localProgress) : null;
+  }
+};
+
+export const clearQuizProgress = async (quizId, studentName) => {
+  try {
+    // Clear from Firebase
+    const progressRef = doc(db, 'quizProgress', `${quizId}_${studentName}`);
+    await deleteDoc(progressRef);
+  } catch (error) {
+    console.error('Error clearing progress from Firebase:', error);
+  }
+  
+  // Clear from localStorage
+  localStorage.removeItem(`quizProgress_${quizId}_${studentName}`);
+  console.log('🧹 Progress cleared for:', studentName);
+};

@@ -419,7 +419,7 @@ const QuizInterface = ({ activeQuiz, studentName, onQuizComplete }) => {
           <div className="missed-question">
             <div className="missed-icon">⏰</div>
             <h3>Question {currentQuestionIndex + 1}</h3>
-            <p>You joined late and missed this question.</p>
+            <p>Quiz is Paused</p>
             <p className="missed-note">Questions auto-progress every {activeQuiz.timePerQuestion} seconds</p>
           </div>
         ) : (

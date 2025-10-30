@@ -13,7 +13,11 @@ export const useTabVisibility = (quizId, studentName) => {
       isInitialMount.current = false;
       return;
     }
-
+    console.log('🔧 useTabVisibility hook MOUNTED in production');
+console.log('🔧 Document hidden state:', document.hidden);
+console.log('🔧 Window location:', window.location.hostname);
+const testVisibility = () => console.log('🔧 TEST: visibilitychange fired!');
+document.addEventListener('visibilitychange', testVisibility);
     const handleTabSwitch = async (source) => {
       // Debounce: Prevent multiple rapid switches
       const now = Date.now();
@@ -77,6 +81,7 @@ export const useTabVisibility = (quizId, studentName) => {
     }
 
     return () => {
+      document.removeEventListener('visibilitychange', testVisibility);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
